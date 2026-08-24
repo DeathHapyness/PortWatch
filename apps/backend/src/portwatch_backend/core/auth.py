@@ -20,6 +20,12 @@ _BEARER_PREFIX = "Bearer "
 
 
 async def require_api_token(authorization: str | None = Header(default=None)) -> None:
+    validate_api_token(authorization)
+
+
+def validate_api_token(authorization: str | None) -> None:
+    """Validate a bearer value independently of the HTTP extraction layer."""
+
     settings = get_settings()
     if not settings.api_token:
         return

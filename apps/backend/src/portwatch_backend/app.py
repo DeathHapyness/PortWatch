@@ -9,17 +9,18 @@ Phase 3 (see collector/service.py).
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from portwatch_backend.api import containers, health, networks, ports, system
+from portwatch_backend.api import containers, events, health, networks, ports, system
 from portwatch_backend.collector.service import Collector
 from portwatch_backend.collector.state import SnapshotStore
 from portwatch_backend.core.auth import require_api_token
 from portwatch_backend.core.config import get_settings
+from portwatch_backend.core.events import SnapshotBroadcaster
 from portwatch_backend.core.middleware import request_id_middleware
 from portwatch_backend.core.schemas import ProblemDetail
 
@@ -38,7 +39,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    snapshot_store = SnapshotStore()
+    event_broadcaster = SnapshotBroadcaster()
+    snapshot_store = SnapshotStore(on_publish=event_broadcaster.publish)
     collector = Collector(settings, snapshot_store)
 
     app = FastAPI(
@@ -52,6 +54,7 @@ def create_app() -> FastAPI:
     # snapshot_store.read().is_stale(...)).
     app.state.snapshot_store = snapshot_store
     app.state.collector = collector
+    app.state.event_broadcaster = event_broadcaster
 
     app.add_middleware(
         CORSMiddleware,
@@ -100,6 +103,14 @@ def create_app() -> FastAPI:
     # the bearer token per ADR-0004 (a no-op when api_token is empty, which
     # is only reachable on loopback — see config.validate_bind_security()).
     protected = [Depends(require_api_token)]
+
+    # Register the upgrade route directly. Authentication reads the handshake
+    # header inside the endpoint because HTTP Header dependencies do not apply
+    # to a WebSocket connection.
+    @app.websocket("/api/v1/events", name="snapshot-events")
+    async def snapshot_events(websocket: WebSocket) -> None:
+        await events.snapshot_events(websocket)
+
     app.include_router(health.router)
     app.include_router(system.router, dependencies=protected)
     app.include_router(containers.router, dependencies=protected)

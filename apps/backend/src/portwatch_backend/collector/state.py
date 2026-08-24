@@ -6,6 +6,7 @@ next generation, never a partially updated mix of containers, networks and
 ports.
 """
 
+import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -14,6 +15,9 @@ from threading import Lock
 from portwatch_backend.core.schemas import ContainerDetail, NetworkSummary, PortEntry
 
 Clock = Callable[[], datetime]
+SnapshotPublishedCallback = Callable[[int, datetime], None]
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -77,8 +81,14 @@ def _clone_snapshot(snapshot: CollectorSnapshot) -> CollectorSnapshot:
 class SnapshotStore:
     """Thread-safe owner of the latest complete Collector snapshot."""
 
-    def __init__(self, *, clock: Clock = _utc_now) -> None:
+    def __init__(
+        self,
+        *,
+        clock: Clock = _utc_now,
+        on_publish: SnapshotPublishedCallback | None = None,
+    ) -> None:
         self._clock = clock
+        self._on_publish = on_publish
         self._lock = Lock()
         initial_time = clock()
         _require_aware(initial_time, field_name="clock result")
@@ -129,5 +139,11 @@ class SnapshotStore:
                 warnings=detached_warnings,
             )
             self._snapshot = snapshot
+
+        if self._on_publish is not None:
+            try:
+                self._on_publish(snapshot.generation, snapshot.collected_at)
+            except Exception:  # noqa: BLE001 - event delivery must not break collection
+                logger.exception("snapshot publish listener failed")
 
         return _clone_snapshot(snapshot)

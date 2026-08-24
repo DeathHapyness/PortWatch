@@ -7,7 +7,7 @@ build against it with a mock server. See docs/adr/0001.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -99,6 +99,14 @@ class SystemSummary(BaseModel):
     ports_free_sample: int = 0
     host_ports_enabled: bool = False
     collector_last_poll: datetime | None = None
+
+
+class EventMessage(BaseModel):
+    """Small invalidation message sent to live dashboard subscribers."""
+
+    type: Literal["snapshot.updated"] = "snapshot.updated"
+    generation: int
+    collected_at: datetime
 
 
 class ProblemDetail(BaseModel):

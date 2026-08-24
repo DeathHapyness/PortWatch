@@ -33,9 +33,7 @@ def _seed_edges(store: SnapshotStore) -> None:
         ports=[
             PortEntry(port=0, protocol=PortProtocol.tcp, state=PortState.host),
             PortEntry(port=53, protocol=PortProtocol.tcp, state=PortState.host),
-            PortEntry(
-                port=53, protocol=PortProtocol.udp, state=PortState.published, owner="dns"
-            ),
+            PortEntry(port=53, protocol=PortProtocol.udp, state=PortState.published, owner="dns"),
             PortEntry(
                 port=65535, protocol=PortProtocol.tcp, state=PortState.published, owner="edge"
             ),

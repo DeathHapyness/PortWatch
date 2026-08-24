@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import socket
 import sys
 import threading
 import unittest
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 NETPROBE_PATH = Path(__file__).parents[1] / "netprobe.py"
 SPEC = importlib.util.spec_from_file_location("portwatch_netprobe", NETPROBE_PATH)
@@ -99,7 +99,7 @@ class OccupiedPortsTests(unittest.TestCase):
 class HttpContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), netprobe.Handler)
+        cls.server = netprobe.NetprobeHTTPServer(("127.0.0.1", 0), netprobe.Handler)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
         host, port = cls.server.server_address
@@ -143,6 +143,48 @@ class HttpContractTests(unittest.TestCase):
         self.assertRegex(
             payload["generated_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
         )
+
+
+class ServerHardeningTests(unittest.TestCase):
+    def test_server_threads_are_daemonized_and_close_does_not_wait_for_handlers(self) -> None:
+        self.assertIs(netprobe.NetprobeHTTPServer.daemon_threads, True)
+        self.assertIs(netprobe.NetprobeHTTPServer.block_on_close, False)
+        self.assertIs(netprobe.NetprobeHTTPServer.allow_reuse_address, True)
+
+    def test_rejects_connections_when_all_worker_slots_are_busy(self) -> None:
+        server = netprobe.NetprobeHTTPServer(
+            ("127.0.0.1", 0), netprobe.Handler, max_workers=1
+        )
+        request = Mock(spec=socket.socket)
+        self.assertTrue(server._worker_slots.acquire(blocking=False))
+        try:
+            with patch.object(server, "shutdown_request") as shutdown_request:
+                server.process_request(request, ("127.0.0.1", 12345))
+                shutdown_request.assert_called_once_with(request)
+        finally:
+            server._worker_slots.release()
+            server.server_close()
+
+    def test_rejects_invalid_worker_limit(self) -> None:
+        with self.assertRaisesRegex(ValueError, "max_workers must be at least 1"):
+            netprobe.NetprobeHTTPServer(
+                ("127.0.0.1", 0), netprobe.Handler, max_workers=0
+            )
+
+    def test_idle_connection_is_closed_after_timeout(self) -> None:
+        with patch.object(netprobe, "CONNECTION_TIMEOUT_SECONDS", 0.05):
+            server = netprobe.NetprobeHTTPServer(("127.0.0.1", 0), netprobe.Handler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            client = socket.create_connection(server.server_address, timeout=1)
+            client.settimeout(1)
+            try:
+                self.assertEqual(client.recv(1), b"")
+            finally:
+                client.close()
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
 
 
 if __name__ == "__main__":

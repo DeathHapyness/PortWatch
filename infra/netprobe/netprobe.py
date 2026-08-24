@@ -20,6 +20,7 @@ import json
 import os
 import socket
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -37,6 +38,12 @@ PROC_NET_TABLES = (
 # entries share the *local* port of an already-listening socket, or are
 # ephemeral outbound ports that aren't relevant to "can I bind this port".
 TCP_STATE_LISTEN = "0A"
+
+# The service is loopback-only, but another local process must not be able to
+# exhaust it with slow or idle connections. Keep both values deliberately
+# small: every request only reads /proc and returns a compact JSON document.
+CONNECTION_TIMEOUT_SECONDS = 5.0
+MAX_CONCURRENT_REQUESTS = 32
 
 
 def _decode_ipv4(hex_ip: str) -> str:
@@ -106,6 +113,10 @@ def read_occupied_ports() -> list[dict]:
 class Handler(BaseHTTPRequestHandler):
     server_version = "netprobe/1.0"
 
+    def setup(self) -> None:
+        super().setup()
+        self.connection.settimeout(CONNECTION_TIMEOUT_SECONDS)
+
     def _send_json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -140,15 +151,59 @@ class Handler(BaseHTTPRequestHandler):
         )
 
 
+class NetprobeHTTPServer(ThreadingHTTPServer):
+    """Small bounded HTTP server for the loopback-only probe API."""
+
+    allow_reuse_address = True
+    daemon_threads = True
+    block_on_close = False
+    request_queue_size = 32
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        handler_class: type[BaseHTTPRequestHandler],
+        *,
+        max_workers: int = MAX_CONCURRENT_REQUESTS,
+    ) -> None:
+        if max_workers < 1:
+            raise ValueError("max_workers must be at least 1")
+        self._worker_slots = threading.BoundedSemaphore(max_workers)
+        super().__init__(server_address, handler_class)
+
+    def process_request(self, request: socket.socket, client_address: tuple[str, int]) -> None:
+        # Never block the accept loop waiting for a worker: close excess
+        # connections immediately so the process remains responsive for a
+        # legitimate health check while under local connection pressure.
+        if not self._worker_slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._worker_slots.release()
+            raise
+
+    def process_request_thread(
+        self, request: socket.socket, client_address: tuple[str, int]
+    ) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._worker_slots.release()
+
+
 def main() -> None:
     host = os.environ.get("NETPROBE_HOST", "127.0.0.1")
     port = int(os.environ.get("NETPROBE_PORT", "8088"))
-    server = ThreadingHTTPServer((host, port), Handler)
+    server = NetprobeHTTPServer((host, port), Handler)
     sys.stderr.write(f"netprobe listening on {host}:{port}\n")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        server.server_close()
 
 
 if __name__ == "__main__":

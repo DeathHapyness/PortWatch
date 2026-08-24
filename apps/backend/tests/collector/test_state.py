@@ -6,8 +6,8 @@ import pytest
 
 from portwatch_backend.collector.state import CollectorSnapshot, SnapshotStore
 from portwatch_backend.core.schemas import (
+    ContainerDetail,
     ContainerStatus,
-    ContainerSummary,
     NetworkSummary,
     PortEntry,
     PortProtocol,
@@ -17,8 +17,8 @@ from portwatch_backend.core.schemas import (
 NOW = datetime(2026, 8, 23, 12, 0, tzinfo=UTC)
 
 
-def make_container(name: str) -> ContainerSummary:
-    return ContainerSummary(
+def make_container(name: str) -> ContainerDetail:
+    return ContainerDetail(
         id=name,
         name=name,
         image="nginx:alpine",

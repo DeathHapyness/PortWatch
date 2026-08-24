@@ -1,25 +1,21 @@
 """Containers — real data from the Collector's snapshot (Phase 3/4).
 
-command/env_redacted/mounts are not yet populated: the Collector's parser
-(collector/parsing.parse_container_summary) only extracts the summary-level
-fields the snapshot stores (see collector/state.py — CollectorSnapshot only
-carries ContainerSummary, not a richer detail type). They default to empty
-rather than being fabricated — a future increment that extends the snapshot
-with detail-level data would fill them in for real.
+The snapshot already stores full ContainerDetail objects (see
+collector/parsing.parse_container_detail and collector/state.py), so this
+module just reads, filters and returns them — no promotion step needed.
+labels are redacted by key (PW-03) and env_redacted carries KEYS only,
+both already applied by the Collector before publish(); this API layer
+never sees raw env values.
 """
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from portwatch_backend.core.schemas import ContainerDetail, ContainerStatus, ContainerSummary
+from portwatch_backend.core.schemas import ContainerDetail, ContainerStatus
 
 router = APIRouter(prefix="/api/v1/containers", tags=["containers"])
 
 
-def _to_detail(summary: ContainerSummary) -> ContainerDetail:
-    return ContainerDetail(**summary.model_dump())
-
-
-def _matches_label(summary: ContainerSummary, label: str) -> bool:
+def _matches_label(summary: ContainerDetail, label: str) -> bool:
     # "key=value" for an exact match, or a bare "key" for presence-only —
     # the contract doesn't pin down a format beyond the single `label`
     # query param, so this is a documented interpretation, not a guess
@@ -38,7 +34,7 @@ async def list_containers(
     label: str | None = None,
     q: str | None = None,
 ) -> list[ContainerDetail]:
-    containers = request.app.state.snapshot_store.read().containers
+    containers: tuple[ContainerDetail, ...] = request.app.state.snapshot_store.read().containers
 
     if status_filter is not None:
         containers = tuple(c for c in containers if c.status == status_filter)
@@ -52,13 +48,13 @@ async def list_containers(
             c for c in containers if needle in c.name.lower() or needle in c.image.lower()
         )
 
-    return [_to_detail(c) for c in containers]
+    return list(containers)
 
 
 @router.get("/{container_id}", summary="Container detail")
 async def get_container(request: Request, container_id: str) -> ContainerDetail:
-    containers = request.app.state.snapshot_store.read().containers
+    containers: tuple[ContainerDetail, ...] = request.app.state.snapshot_store.read().containers
     for container in containers:
         if container_id in (container.id, container.name):
-            return _to_detail(container)
+            return container
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="container not found")

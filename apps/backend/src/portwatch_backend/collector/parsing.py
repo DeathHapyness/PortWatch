@@ -14,6 +14,7 @@ from typing import Any
 
 from portwatch_backend.collector.netprobe_client import HostPortEntry
 from portwatch_backend.core.schemas import (
+    ContainerDetail,
     ContainerStatus,
     ContainerSummary,
     NetworkSummary,
@@ -24,6 +25,18 @@ from portwatch_backend.core.schemas import (
 )
 
 SHORT_ID_LENGTH = 12
+
+# PW-03 (docs/audits/2026-08-23-auditoria-tecnica.md): Docker labels can carry
+# internal domains, proxy/middleware rules and, in misconfigured stacks,
+# credentials. Redact by *key* rather than trying to recognize secret-shaped
+# values — cheaper, and it fails safe (a label that merely mentions one of
+# these words but isn't actually sensitive is redacted too; that's an
+# acceptable false positive for a monitoring surface).
+_SENSITIVE_LABEL_KEY_RE = re.compile(
+    r"(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|auth)",
+    re.IGNORECASE,
+)
+_REDACTED_LABEL_VALUE = "[redacted]"
 
 # docker-py's `.attrs` is an untyped JSON blob straight off the Engine API —
 # there's no stronger static shape to give it than this.
@@ -58,12 +71,65 @@ def parse_docker_timestamp(raw: str) -> datetime:
     return datetime.fromisoformat(f"{base}.{fraction}{offset}")
 
 
-def parse_container_summary(attrs: JSONDict) -> ContainerSummary:
-    """Build a ContainerSummary from one container's full inspect payload —
+def _redact_labels(labels: JSONDict) -> dict[str, str]:
+    """Keep every label key (useful for filtering/observability) but mask
+    the value of any key that looks credential-shaped. See PW-03 above."""
+
+    return {
+        key: (_REDACTED_LABEL_VALUE if _SENSITIVE_LABEL_KEY_RE.search(key) else value)
+        for key, value in labels.items()
+    }
+
+
+def _format_command(config: JSONDict) -> str | None:
+    """Entrypoint + Cmd, the same way `docker inspect` shows the effective
+    command actually exec'd in the container — Cmd alone is misleading for
+    images that rely on an ENTRYPOINT wrapper script."""
+
+    entrypoint = config.get("Entrypoint") or []
+    cmd = config.get("Cmd") or []
+    parts = [
+        *([entrypoint] if isinstance(entrypoint, str) else entrypoint),
+        *([cmd] if isinstance(cmd, str) else cmd),
+    ]
+    return " ".join(parts) if parts else None
+
+
+def _extract_env_keys(config: JSONDict) -> list[str]:
+    """`Config.Env` entries are "KEY=value" — we only ever return the KEY.
+    Values are never captured, let alone returned by the API (see
+    ContainerDetail.env_redacted's docstring)."""
+
+    keys = []
+    for entry in config.get("Env") or []:
+        key, sep, _value = entry.partition("=")
+        if sep:
+            keys.append(key)
+    return sorted(keys)
+
+
+def _format_mounts(attrs: JSONDict) -> list[str]:
+    """Type + destination only — never the host Source path (PW-03: a bind
+    mount's source can reveal host filesystem layout)."""
+
+    formatted = []
+    for mount in attrs.get("Mounts") or []:
+        mount_type = mount.get("Type", "unknown")
+        destination = mount.get("Destination")
+        formatted.append(f"{mount_type}:{destination}" if destination else mount_type)
+    return formatted
+
+
+def parse_container_detail(attrs: JSONDict) -> ContainerDetail:
+    """Build a ContainerDetail from one container's full inspect payload —
     docker-py `Container.attrs` *after* `.reload()`, i.e. the shape of
     `GET /containers/{id}/json`, not the leaner list-endpoint shape (which
     lacks Config.Labels, State.Health and a Networks map in some API
     versions). See collector/service.py for why we reload() before parsing.
+
+    Returns the full detail shape (not just the summary-level fields) so the
+    snapshot the Collector publishes is already API-response-ready — see
+    collector/state.py and api/containers.py.
     """
 
     state = attrs.get("State") or {}
@@ -78,7 +144,7 @@ def parse_container_summary(attrs: JSONDict) -> ContainerSummary:
     networks = sorted((network_settings.get("Networks") or {}).keys())
     ports = _parse_published_ports(network_settings.get("Ports") or {})
 
-    return ContainerSummary(
+    return ContainerDetail(
         id=attrs["Id"][:SHORT_ID_LENGTH],
         name=attrs["Name"].lstrip("/"),
         image=config.get("Image", ""),
@@ -87,7 +153,10 @@ def parse_container_summary(attrs: JSONDict) -> ContainerSummary:
         created_at=parse_docker_timestamp(attrs["Created"]),
         networks=networks,
         ports=ports,
-        labels=config.get("Labels") or {},
+        labels=_redact_labels(config.get("Labels") or {}),
+        command=_format_command(config),
+        env_redacted=_extract_env_keys(config),
+        mounts=_format_mounts(attrs),
     )
 
 

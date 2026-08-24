@@ -12,8 +12,8 @@ import pytest
 from portwatch_backend.app import app
 from portwatch_backend.collector.state import SnapshotStore
 from portwatch_backend.core.schemas import (
+    ContainerDetail,
     ContainerStatus,
-    ContainerSummary,
     NetworkSummary,
     PortEntry,
     PortProtocol,
@@ -48,8 +48,8 @@ def snapshot_store() -> Iterator[SnapshotStore]:
         app.state.snapshot_store = original
 
 
-def _web_container() -> ContainerSummary:
-    return ContainerSummary(
+def _web_container() -> ContainerDetail:
+    return ContainerDetail(
         id="abc123def456",
         name="portwatch-dev-fixture-web",
         image="nginx:alpine",
@@ -57,12 +57,18 @@ def _web_container() -> ContainerSummary:
         created_at=NOW,
         networks=["portwatch-dev-net"],
         ports=[PublishedPort(container_port=80, host_port=8081, protocol=PortProtocol.tcp)],
-        labels={"portwatch.env": "dev-sandbox"},
+        # Already redacted by the Collector before publish() — this fixture
+        # mirrors what parse_container_detail would have produced, not raw
+        # Docker attrs (see collector/parsing.py for the actual redaction).
+        labels={"portwatch.env": "dev-sandbox", "com.example.token": "[redacted]"},
+        command="nginx -g daemon off;",
+        env_redacted=["NGINX_VERSION", "PATH"],
+        mounts=["bind:/etc/nginx/conf.d"],
     )
 
 
-def _stopped_container() -> ContainerSummary:
-    return ContainerSummary(
+def _stopped_container() -> ContainerDetail:
+    return ContainerDetail(
         id="def456abc789",
         name="portwatch-dev-old-thing",
         image="redis:7",
@@ -156,6 +162,23 @@ async def test_get_container_by_id_or_name(
 
     assert by_id.status_code == by_name.status_code == 200
     assert by_id.json()["name"] == by_name.json()["name"] == "portwatch-dev-fixture-web"
+
+
+async def test_get_container_detail_exposes_command_env_keys_and_mounts(
+    client: httpx.AsyncClient, snapshot_store: SnapshotStore
+) -> None:
+    _seed(snapshot_store)
+
+    resp = await client.get("/api/v1/containers/portwatch-dev-fixture-web")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["command"] == "nginx -g daemon off;"
+    assert body["env_redacted"] == ["NGINX_VERSION", "PATH"]
+    assert body["mounts"] == ["bind:/etc/nginx/conf.d"]
+    # Already-redacted by the Collector — the API must not re-expose or
+    # further transform label values, just pass them through.
+    assert body["labels"]["com.example.token"] == "[redacted]"
 
 
 async def test_get_container_not_found_is_problem_json(

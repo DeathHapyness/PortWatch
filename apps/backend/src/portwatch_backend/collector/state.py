@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import Lock
 
-from portwatch_backend.core.schemas import ContainerSummary, NetworkSummary, PortEntry
+from portwatch_backend.core.schemas import ContainerDetail, NetworkSummary, PortEntry
 
 Clock = Callable[[], datetime]
 
@@ -38,7 +38,7 @@ class CollectorSnapshot:
     collected_at: datetime
     docker_version: str | None = None
     docker_api_version: str | None = None
-    containers: tuple[ContainerSummary, ...] = ()
+    containers: tuple[ContainerDetail, ...] = ()
     networks: tuple[NetworkSummary, ...] = ()
     ports: tuple[PortEntry, ...] = ()
     host_ports_enabled: bool = False
@@ -94,7 +94,7 @@ class SnapshotStore:
     def publish(
         self,
         *,
-        containers: Sequence[ContainerSummary] = (),
+        containers: Sequence[ContainerDetail] = (),
         networks: Sequence[NetworkSummary] = (),
         ports: Sequence[PortEntry] = (),
         docker_version: str | None = None,

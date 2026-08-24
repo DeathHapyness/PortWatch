@@ -12,7 +12,7 @@ import pytest
 
 from portwatch_backend.collector.parsing import (
     build_port_entries,
-    parse_container_summary,
+    parse_container_detail,
     parse_docker_timestamp,
     parse_network_summary,
 )
@@ -54,7 +54,7 @@ def test_parse_docker_timestamp_rejects_garbage() -> None:
         parse_docker_timestamp("not-a-timestamp")
 
 
-# --- parse_container_summary -------------------------------------------------
+# --- parse_container_detail ---------------------------------------------------
 
 FIXTURE_WEB_ATTRS = {
     "Id": "b2e424a964a8619c55df90ce9b22ac5c7e5b7c2a9f7a30af93ea0e98fff74784",
@@ -74,26 +74,44 @@ FIXTURE_WEB_ATTRS = {
             "portwatch.env": "dev-sandbox",
             "com.docker.compose.service": "fixture-web",
         },
+        "Entrypoint": ["/docker-entrypoint.sh"],
+        "Cmd": ["nginx", "-g", "daemon off;"],
+        "Env": ["NGINX_VERSION=1.27.0", "PATH=/usr/local/sbin:/usr/sbin"],
     },
     "NetworkSettings": {
         "Networks": {"portwatch-dev-net": {"IPAddress": "172.18.0.3"}},
         "Ports": {"80/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8081"}]},
     },
+    "Mounts": [
+        {
+            "Type": "bind",
+            "Source": "/home/rique/homelab/web/conf",
+            "Destination": "/etc/nginx/conf.d",
+            "RW": False,
+        },
+        {
+            "Type": "volume",
+            "Name": "web-cache",
+            "Source": "/var/lib/docker/volumes/web-cache/_data",
+            "Destination": "/var/cache/nginx",
+            "RW": True,
+        },
+    ],
 }
 
 
-def test_parse_container_summary_from_real_shaped_inspect() -> None:
-    summary = parse_container_summary(FIXTURE_WEB_ATTRS)
+def test_parse_container_detail_from_real_shaped_inspect() -> None:
+    detail = parse_container_detail(FIXTURE_WEB_ATTRS)
 
-    assert summary.id == "b2e424a964a8"  # truncated to short form
-    assert summary.name == "portwatch-dev-fixture-web"  # leading slash stripped
-    assert summary.image == "nginx:alpine"
-    assert summary.status == ContainerStatus.running
-    assert summary.health is None
-    assert summary.networks == ["portwatch-dev-net"]
-    assert summary.labels["portwatch.env"] == "dev-sandbox"
-    assert len(summary.ports) == 1
-    port = summary.ports[0]
+    assert detail.id == "b2e424a964a8"  # truncated to short form
+    assert detail.name == "portwatch-dev-fixture-web"  # leading slash stripped
+    assert detail.image == "nginx:alpine"
+    assert detail.status == ContainerStatus.running
+    assert detail.health is None
+    assert detail.networks == ["portwatch-dev-net"]
+    assert detail.labels["portwatch.env"] == "dev-sandbox"
+    assert len(detail.ports) == 1
+    port = detail.ports[0]
     assert (port.container_port, port.host_port, port.host_ip, port.protocol) == (
         80,
         8081,
@@ -102,15 +120,15 @@ def test_parse_container_summary_from_real_shaped_inspect() -> None:
     )
 
 
-def test_parse_container_summary_reads_health_status_when_present() -> None:
+def test_parse_container_detail_reads_health_status_when_present() -> None:
     attrs = {
         **FIXTURE_WEB_ATTRS,
         "State": {**FIXTURE_WEB_ATTRS["State"], "Health": {"Status": "healthy"}},
     }
-    assert parse_container_summary(attrs).health == "healthy"
+    assert parse_container_detail(attrs).health == "healthy"
 
 
-def test_parse_container_summary_ignores_exposed_but_unpublished_ports() -> None:
+def test_parse_container_detail_ignores_exposed_but_unpublished_ports() -> None:
     attrs = {
         **FIXTURE_WEB_ATTRS,
         "NetworkSettings": {
@@ -121,11 +139,11 @@ def test_parse_container_summary_ignores_exposed_but_unpublished_ports() -> None
             "Ports": {"80/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8081"}], "443/tcp": None},
         },
     }
-    summary = parse_container_summary(attrs)
-    assert [p.container_port for p in summary.ports] == [80]
+    detail = parse_container_detail(attrs)
+    assert [p.container_port for p in detail.ports] == [80]
 
 
-def test_parse_container_summary_handles_multiple_host_bindings_per_port() -> None:
+def test_parse_container_detail_handles_multiple_host_bindings_per_port() -> None:
     # e.g. bound on both an IPv4 and an IPv6 host address.
     attrs = {
         **FIXTURE_WEB_ATTRS,
@@ -139,15 +157,56 @@ def test_parse_container_summary_handles_multiple_host_bindings_per_port() -> No
             },
         },
     }
-    summary = parse_container_summary(attrs)
-    assert len(summary.ports) == 2
-    assert {p.host_ip for p in summary.ports} == {"127.0.0.1", "::1"}
+    detail = parse_container_detail(attrs)
+    assert len(detail.ports) == 2
+    assert {p.host_ip for p in detail.ports} == {"127.0.0.1", "::1"}
 
 
-def test_parse_container_summary_rejects_unknown_status() -> None:
+def test_parse_container_detail_rejects_unknown_status() -> None:
     attrs = {**FIXTURE_WEB_ATTRS, "State": {"Status": "some-future-docker-status"}}
     with pytest.raises(ValueError):
-        parse_container_summary(attrs)
+        parse_container_detail(attrs)
+
+
+def test_parse_container_detail_builds_command_from_entrypoint_and_cmd() -> None:
+    detail = parse_container_detail(FIXTURE_WEB_ATTRS)
+    assert detail.command == "/docker-entrypoint.sh nginx -g daemon off;"
+
+
+def test_parse_container_detail_command_is_none_when_absent() -> None:
+    attrs = {**FIXTURE_WEB_ATTRS, "Config": {"Image": "scratch"}}
+    assert parse_container_detail(attrs).command is None
+
+
+def test_parse_container_detail_env_redacted_carries_keys_only_sorted() -> None:
+    detail = parse_container_detail(FIXTURE_WEB_ATTRS)
+    assert detail.env_redacted == ["NGINX_VERSION", "PATH"]
+    # the fixture's actual values must never leak into the parsed result.
+    assert not any("1.27.0" in key or "usr" in key for key in detail.env_redacted)
+
+
+def test_parse_container_detail_mounts_expose_type_and_destination_not_source() -> None:
+    detail = parse_container_detail(FIXTURE_WEB_ATTRS)
+    assert detail.mounts == ["bind:/etc/nginx/conf.d", "volume:/var/cache/nginx"]
+    assert not any("/home/rique" in m or "/var/lib/docker" in m for m in detail.mounts)
+
+
+def test_parse_container_detail_redacts_sensitive_looking_label_values() -> None:
+    attrs = {
+        **FIXTURE_WEB_ATTRS,
+        "Config": {
+            **FIXTURE_WEB_ATTRS["Config"],
+            "Labels": {
+                "portwatch.env": "dev-sandbox",
+                "com.example.registry.auth-token": "super-secret-value",
+                "traefik.http.middlewares.api-auth.basicauth.password": "hunter2",
+            },
+        },
+    }
+    detail = parse_container_detail(attrs)
+    assert detail.labels["portwatch.env"] == "dev-sandbox"
+    assert detail.labels["com.example.registry.auth-token"] == "[redacted]"
+    assert detail.labels["traefik.http.middlewares.api-auth.basicauth.password"] == "[redacted]"
 
 
 # --- parse_network_summary ---------------------------------------------------

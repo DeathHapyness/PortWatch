@@ -30,12 +30,12 @@ from portwatch_backend.collector.netprobe_client import (
 )
 from portwatch_backend.collector.parsing import (
     build_port_entries,
-    parse_container_summary,
+    parse_container_detail,
     parse_network_summary,
 )
 from portwatch_backend.collector.state import CollectorSnapshot, SnapshotStore
 from portwatch_backend.core.config import Settings
-from portwatch_backend.core.schemas import ContainerSummary, NetworkSummary
+from portwatch_backend.core.schemas import ContainerDetail, NetworkSummary
 
 logger = logging.getLogger(__name__)
 
@@ -141,16 +141,16 @@ class Collector:
 
     def _collect_containers(
         self, client: docker.DockerClient, warnings: list[str]
-    ) -> list[ContainerSummary]:
-        summaries: list[ContainerSummary] = []
+    ) -> list[ContainerDetail]:
+        summaries: list[ContainerDetail] = []
         for container in client.containers.list(all=True):
             try:
                 # list() returns the leaner list-endpoint shape; reload()
                 # re-fetches full GET /containers/{id}/json inspect data
                 # (Config.Labels, State.Health, NetworkSettings.Ports map)
-                # that the parser needs — see parsing.parse_container_summary.
+                # that the parser needs — see parsing.parse_container_detail.
                 container.reload()
-                summaries.append(parse_container_summary(container.attrs))
+                summaries.append(parse_container_detail(container.attrs))
             except Exception as exc:  # noqa: BLE001 - isolate one bad container
                 warnings.append(f"skipped container {(container.id or '?')[:12]}: {exc}")
         return summaries

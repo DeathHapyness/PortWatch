@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PortWatch — Monitoramento de homelab Docker</title>
   <meta name="description" content="PortWatch é uma plataforma de observação para homelabs: descoberta de containers Docker, portas publicadas e livres no host, redes Docker — via API REST e dashboard web. Somente-observação." />
+  <meta property="og:title" content="PortWatch — Monitoramento de homelab Docker" />
+  <meta property="og:description" content="Descoberta de containers, portas publicadas e livres no host, redes Docker. API REST + dashboard web. Somente-observação." />
+  <meta property="og:type" content="website" />
+  <script>document.documentElement.classList.add("js");</script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='none' stroke='%2334d399' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%2334d399' stroke-opacity='.45' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%2334d399'/%3E%3Cline x1='16' y1='16' x2='27' y2='9' stroke='%2322d3ee' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -26,6 +30,7 @@
       --red: #f87171;
       --grad: linear-gradient(90deg, var(--cyan), var(--green));
       --radius: 14px;
+      --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
       --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
@@ -65,6 +70,28 @@
 
     .container { width: min(1120px, 100% - 48px); margin-inline: auto; }
 
+    /* =========================================================
+       Sistema de animação scroll-driven
+       - Entradas: IntersectionObserver adiciona .in (uma vez)
+       - Scrub (amarrado ao progresso do scroll): CSS
+         animation-timeline quando suportado (html.sda)
+       - Sem JS: html sem .js => tudo visível estaticamente
+       ========================================================= */
+    html.js [data-animate]:not(.scrub) {
+      opacity: 0;
+      transform: translateY(24px);
+      transition:
+        opacity 0.7s var(--ease),
+        transform 0.7s var(--ease),
+        clip-path 0.9s var(--ease);
+      transition-delay: var(--d, 0ms);
+    }
+    html.js [data-animate="left"]:not(.scrub)  { transform: translateX(-30px); }
+    html.js [data-animate="right"]:not(.scrub) { transform: translateX(30px); }
+    html.js [data-animate="zoom"]:not(.scrub)  { transform: scale(0.94) translateY(12px); }
+    html.js [data-animate="wipe"]:not(.scrub)  { transform: none; clip-path: inset(0 100% 0 0); }
+    html.js [data-animate]:not(.scrub).in { opacity: 1; transform: none; clip-path: inset(0 0 0 0); }
+
     /* ---------- Nav ---------- */
     header.nav {
       position: sticky; top: 0; z-index: 50;
@@ -83,6 +110,7 @@
     nav.links a {
       padding: 8px 12px; border-radius: 8px; font-size: 0.9rem; color: var(--muted); font-weight: 500;
       transition: color .18s, background .18s;
+      white-space: nowrap;
     }
     nav.links a:hover, nav.links a.active { color: var(--text); background: var(--surface); }
     .nav-cta {
@@ -112,6 +140,28 @@
     }
 
     /* ---------- Hero ---------- */
+    /* entrada em cascata no carregamento */
+    html.js .h-in { opacity: 0; animation: rise 0.85s var(--ease) forwards; }
+    html.js .h-d1 { animation-delay: 0.05s; }
+    html.js .h-d2 { animation-delay: 0.18s; }
+    html.js .h-d3 { animation-delay: 0.32s; }
+    html.js .h-d4 { animation-delay: 0.46s; }
+    html.js .terminal-wrap.h-in { animation-name: riseZoom; animation-duration: 1s; }
+    @keyframes rise { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
+    @keyframes riseZoom { from { opacity: 0; transform: translateY(34px) scale(0.96); } to { opacity: 1; transform: none; } }
+
+    /* saída sutil amarrada ao scroll (progressive enhancement) */
+    @supports (animation-timeline: view()) {
+      html.sda .hero {
+        animation: heroOut linear both;
+        animation-timeline: view();
+        animation-range: exit 0% exit 62%;
+      }
+      @keyframes heroOut {
+        to { opacity: 0.22; transform: translateY(-42px) scale(0.97); }
+      }
+    }
+
     .hero { padding: 96px 0 64px; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; }
     .badge {
       display: inline-flex; align-items: center; gap: 8px;
@@ -186,7 +236,11 @@
     .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
     .stat { padding: 26px 20px; text-align: center; border-inline-start: 1px solid var(--border); }
     .stat:first-child { border-inline-start: 0; }
-    .stat b { display: block; font-size: 1.7rem; letter-spacing: -0.02em; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .stat b {
+      display: block; font-size: 1.7rem; letter-spacing: -0.02em;
+      background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent;
+      font-variant-numeric: tabular-nums;
+    }
     .stat span { font-size: 0.82rem; color: var(--muted); }
     @media (max-width: 720px) {
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -201,10 +255,13 @@
       text-transform: uppercase; color: var(--green); margin-bottom: 12px;
       display: flex; align-items: center; gap: 10px;
     }
-    .kicker::before { content: ""; width: 26px; height: 2px; background: var(--grad); border-radius: 2px; }
+    .kicker::before { content: ""; width: 26px; height: 2px; background: var(--grad); border-radius: 2px; transform-origin: left; }
+    html.js [data-animate]:not(.in):not(.scrub) .kicker::before { animation: kickerGrow 1s var(--ease) forwards; animation-delay: calc(var(--d, 0ms) + 150ms); }
+    @keyframes kickerGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
     h2 { font-size: clamp(1.6rem, 3vw, 2.2rem); letter-spacing: -0.02em; font-weight: 800; margin-bottom: 16px; }
     .section-lead { color: var(--muted); max-width: 68ch; font-size: 1.02rem; }
     .section-head { margin-bottom: 44px; }
+    .section-lead code { font-family: var(--mono); color: var(--green); font-size: 0.92em; }
 
     /* sobre */
     .about-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px; align-items: start; }
@@ -220,8 +277,108 @@
     .mini-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; background: var(--surface); }
     .mini-card b { display: block; margin-bottom: 6px; font-size: 0.95rem; }
     .mini-card p { color: var(--muted); font-size: 0.88rem; }
+    .mini-card code { font-family: var(--mono); font-size: 0.85em; color: var(--green); }
+    .about-text p { color: var(--muted); }
+    .about-text p + p { margin-top: 16px; }
+    .about-text strong { color: var(--text); font-weight: 600; }
+    .about-text code { font-family: var(--mono); color: var(--green); font-size: 0.92em; }
     @media (max-width: 860px) {
       .about-grid, .about-cols { grid-template-columns: 1fr; }
+    }
+
+    /* ---------- Preview do dashboard ---------- */
+    .shot-zone { perspective: 1200px; }
+    .shot {
+      max-width: 900px; margin-inline: auto;
+      background: #0a101e; border: 1px solid var(--border-strong); border-radius: 16px;
+      overflow: hidden; box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(34, 211, 238, 0.05);
+    }
+    .shot-bar {
+      display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+      border-bottom: 1px solid var(--border); background: rgba(148, 163, 184, 0.04);
+    }
+    .shot-bar i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+    .shot-bar i:nth-child(1) { background: #ff5f57; } .shot-bar i:nth-child(2) { background: #febc2e; } .shot-bar i:nth-child(3) { background: #28c840; }
+    .shot-url {
+      margin-inline: auto; font-family: var(--mono); font-size: 0.74rem; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 999px; padding: 4px 18px;
+      background: rgba(2, 6, 14, 0.6);
+    }
+    .shot-body { display: grid; grid-template-columns: 190px 1fr; min-height: 380px; }
+    .shot-side { border-inline-end: 1px solid var(--border); padding: 18px 12px; display: grid; gap: 4px; align-content: start; background: rgba(2, 6, 14, 0.35); }
+    .side-item {
+      display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px;
+      font-size: 0.84rem; color: var(--muted); font-weight: 500;
+    }
+    .side-item svg { flex-shrink: 0; opacity: .8; }
+    .side-item.on { background: rgba(52, 211, 153, 0.1); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.25); }
+    .shot-main { padding: 22px; display: grid; gap: 18px; align-content: start; }
+    .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .kpi {
+      border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+      background: var(--surface);
+    }
+    .kpi small { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--faint); font-family: var(--mono); margin-bottom: 4px; }
+    .kpi b { font-size: 1.45rem; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .kpi b em { font-style: normal; font-size: 0.75rem; color: var(--green); margin-left: 6px; }
+    .panel {
+      border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden;
+    }
+    .panel-head { padding: 11px 16px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
+    .chart { display: flex; align-items: flex-end; gap: 8px; height: 130px; padding: 16px 16px 0; }
+    .bar {
+      flex: 1; border-radius: 4px 4px 0 0;
+      background: linear-gradient(to top, rgba(34, 211, 238, 0.65), rgba(52, 211, 153, 0.85));
+      height: var(--h, 40%);
+      transform-origin: bottom;
+    }
+    html.js .shot.in .bar { animation: barGrow 0.9s var(--ease) both; animation-delay: calc(500ms + var(--i) * 80ms); }
+    @keyframes barGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+    .chart-axis { display: flex; gap: 8px; padding: 6px 16px 12px; }
+    .chart-axis span { flex: 1; text-align: center; font-family: var(--mono); font-size: 0.6rem; color: var(--faint); }
+
+    /* mapa de portas dentro do preview */
+    .portmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 14px 16px 16px; }
+    .pchip {
+      display: flex; align-items: center; gap: 9px;
+      border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px;
+      font-family: var(--mono); font-size: 0.74rem; color: var(--muted);
+      background: rgba(2, 6, 14, 0.4);
+      opacity: 0; transform: scale(0.9) translateY(6px);
+    }
+    html.js .shot.in .pchip { animation: chipPop 0.5s var(--ease) both; animation-delay: calc(750ms + var(--i) * 60ms); }
+    @keyframes chipPop { to { opacity: 1; transform: none; } }
+    .pchip i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .pchip.pub i { background: var(--green); box-shadow: 0 0 8px rgba(52, 211, 153, 0.6); }
+    .pchip.busy i { background: var(--amber); }
+    .pchip.free { border-style: dashed; color: var(--faint); }
+    .pchip.free i { background: transparent; border: 1.5px dashed var(--faint); }
+    .legend { display: flex; gap: 18px; flex-wrap: wrap; padding: 0 16px 16px; font-size: 0.72rem; color: var(--faint); }
+    .legend b { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+    .legend i { width: 8px; height: 8px; border-radius: 50%; }
+    .l-pub i { background: var(--green); } .l-busy i { background: var(--amber); }
+    .l-free i { background: transparent; border: 1.5px dashed var(--faint); }
+    .shot-note {
+      max-width: 900px; margin: 14px auto 0; text-align: center;
+      font-size: 0.78rem; color: var(--faint);
+    }
+    .shot-note code { font-family: var(--mono); color: var(--green); }
+    .shot-layer { opacity: 0; transform: translateY(14px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+    html.js .shot.in .shot-layer { opacity: 1; transform: none; }
+    html.js .shot.in .sl-side { transition-delay: 250ms; }
+    html.js .shot.in .sl-kpis { transition-delay: 400ms; }
+    html.js .shot.in .sl-panel { transition-delay: 550ms; }
+    html.js .shot:not(.in) .bar, html.js .shot:not(.in) .pchip { animation: none; }
+    html:not(.js) .shot-layer, html:not(.js) .pchip { opacity: 1; transform: none; }
+    html:not(.js) .bar { transform: none; }
+    @media (max-width: 720px) {
+      .shot-body { grid-template-columns: 56px 1fr; }
+      .side-item span { display: none; }
+      .side-item { justify-content: center; padding: 10px 6px; }
+      .kpis { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .kpi { padding: 10px 8px; } .kpi b { font-size: 1.05rem; } .kpi small { letter-spacing: 0.04em; font-size: 0.58rem; }
+      .chart { height: 96px; }
+      .portmap { grid-template-columns: 1fr 1fr; }
     }
 
     /* features */
@@ -241,7 +398,9 @@
       width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center;
       background: rgba(34, 211, 238, 0.1); border: 1px solid rgba(34, 211, 238, 0.25);
       margin-bottom: 16px; color: var(--cyan);
+      transition: transform .25s var(--ease);
     }
+    .feature:hover .f-icon { transform: rotate(-6deg) scale(1.08); }
     .feature h3 { font-size: 1.02rem; margin-bottom: 8px; }
     .feature p { color: var(--muted); font-size: 0.9rem; }
     .feature code { font-family: var(--mono); font-size: 0.78em; color: var(--green); background: rgba(52, 211, 153, 0.09); padding: 2px 6px; border-radius: 5px; }
@@ -286,6 +445,7 @@
     }
     .node b { display: block; font-size: 0.95rem; margin-bottom: 4px; }
     .node small { color: var(--muted); font-size: 0.8rem; display: block; line-height: 1.5; }
+    .node small strong { color: var(--muted); }
     .node .tag {
       position: absolute; top: -11px; right: 12px; font-family: var(--mono);
       font-size: 0.64rem; font-weight: 600; padding: 2px 9px; border-radius: 999px;
@@ -297,11 +457,24 @@
     .node.proxy .tag { color: var(--red); border-color: rgba(248, 113, 113, 0.4); }
     .node.core { border-color: rgba(52, 211, 153, 0.45); background: rgba(52, 211, 153, 0.05); box-shadow: 0 0 40px rgba(52, 211, 153, 0.07); }
     .node.core .tag { color: var(--green); border-color: rgba(52, 211, 153, 0.45); }
-    .arrow { height: 44px; display: grid; place-items: center; color: var(--faint); }
-    .arrow svg { animation: flowDown 1.6s ease-in-out infinite; }
+    .arrow { height: 48px; display: grid; place-items: start center; color: var(--faint); padding-top: 4px; }
+    .grow { display: block; height: 34px; transform-origin: top center; }
+    html.js .arrow .grow { transform: scaleY(0); transition: transform .65s var(--ease); }
+    html.js .arrow.in .grow { transform: none; }
+    .grow svg { animation: flowDown 1.6s ease-in-out infinite; }
     @keyframes flowDown { 0%,100% { transform: translateY(-3px); opacity: .5;} 50% { transform: translateY(3px); opacity: 1; } }
+    @supports (animation-timeline: view()) {
+      html.sda .arrow .grow {
+        transform: scaleY(0); transition: none;
+        animation: growY linear both;
+        animation-timeline: view();
+        animation-range: entry 45% cover 42%;
+      }
+      @keyframes growY { to { transform: scaleY(1); } }
+    }
     .arch-note { margin-top: 28px; font-size: 0.82rem; color: var(--faint); text-align: center; max-width: 74ch; }
     .arch-note code { font-family: var(--mono); font-size: 0.95em; color: var(--muted); }
+    .arch-note strong { color: var(--muted); }
 
     /* segurança */
     .sec-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
@@ -316,647 +489,867 @@
       background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.3);
     }
     .sec-card h3 { font-size: 0.98rem; margin-bottom: 6px; }
+    .sec-card h3 strong, .sec-card p strong { color: var(--text); font-weight: 600; }
     .sec-card p { color: var(--muted); font-size: 0.88rem; }
+    .sec-card p code { font-family: var(--mono); font-size: 0.9em; }
     @media (max-width: 780px) { .sec-grid { grid-template-columns: 1fr; } }
 
-    /* stack */
-    .stack-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-    .stack-col { border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; background: var(--surface); }
-    .stack-col > b { display: block; font-size: 0.8rem; font-family: var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--cyan); margin-bottom: 16px; }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    /* ---------- Instalação ---------- */
+    .install-grid { display: grid; grid-template-columns: 1.08fr 0.92fr; gap: 36px; align-items: stretch; }
+    .term {
+      display: flex; flex-direction: column;
+      background: rgba(2, 6, 14, 0.92); border: 1px solid var(--border-strong);
+      border-radius: var(--radius); overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    }
+    .term-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 11px 14px; border-bottom: 1px solid var(--border); background: rgba(148, 163, 184, 0.04);
+    }
+    .term-bar i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+    .term-bar i:nth-child(1) { background: #ff5f57; } .term-bar i:nth-child(2) { background: #febc2e; } .term-bar i:nth-child(3) { background: #28c840; }
+    .term-title { margin-inline: auto; font-family: var(--mono); font-size: 0.72rem; color: var(--faint); }
+    .term-lines { flex: 1; padding: 18px; font-family: var(--mono); font-size: 0.8rem; line-height: 1.75; min-height: 250px; overflow: hidden; }
+    .tr { white-space: pre-wrap; word-break: break-word; color: var(--muted); opacity: 0; transform: translateY(4px); }
+    .tr.show { animation: lineIn 0.3s forwards; }
+    .t-prompt { color: var(--green); font-weight: 600; }
+    .t-flag { color: var(--cyan); }
+    .t-comment { color: var(--faint); font-style: italic; }
+    .req-card {
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 26px;
+      background: linear-gradient(160deg, rgba(52, 211, 153, 0.06), transparent 55%), var(--surface);
+      display: flex; flex-direction: column;
+    }
+    .req-card h3 { font-size: 1.02rem; margin-bottom: 8px; }
+    .req-card > p { color: var(--muted); font-size: 0.9rem; }
+    .req-card code { font-family: var(--mono); font-size: 0.9em; color: var(--green); }
+    .req-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
     .chip {
-      font-family: var(--mono); font-size: 0.76rem; font-weight: 500;
-      border: 1px solid var(--border-strong); border-radius: 999px; padding: 6px 12px; color: var(--text);
-      background: rgba(148, 163, 184, 0.05);
+      font-family: var(--mono); font-size: 0.78rem; font-weight: 500;
+      border: 1px solid var(--border-strong); border-radius: 999px; padding: 7px 14px;
+      color: var(--muted); background: rgba(2, 6, 14, 0.5);
+      opacity: 0; transform: translateY(8px) scale(0.94);
     }
-    .chip.hl { border-color: rgba(52, 211, 153, 0.5); color: var(--green); background: rgba(52, 211, 153, 0.07); }
-    @media (max-width: 900px) { .stack-grid { grid-template-columns: 1fr; } }
+    html.js .req-chips.in .chip { animation: chipPop 0.45s var(--ease) both; animation-delay: calc(var(--i) * 70ms); }
+    html:not(.js) .chip { opacity: 1; transform: none; }
+    .req-foot { margin-top: auto; padding-top: 18px; font-size: 0.8rem; color: var(--faint); border-top: 1px dashed var(--border); }
+    .req-foot strong { color: var(--muted); }
+    .req-foot code { font-family: var(--mono); color: var(--amber); font-size: 0.95em; }
 
-    /* roadmap */
-    .timeline { position: relative; margin-left: 10px; padding-left: 34px; display: grid; gap: 8px; }
-    .timeline::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; background: linear-gradient(var(--green), rgba(148,163,184,.2)); }
-    .tl-item { position: relative; padding: 14px 0 22px; }
+    /* ---------- Stack ---------- */
+    .stack-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .stack-card {
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 22px;
+      background: var(--surface); transition: transform .2s, border-color .2s;
+    }
+    .stack-card:hover { transform: translateY(-4px); border-color: rgba(34, 211, 238, 0.45); }
+    .sc-tag {
+      display: inline-block; font-family: var(--mono); font-size: 0.64rem; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase; color: var(--cyan);
+      border: 1px solid rgba(34, 211, 238, 0.3); border-radius: 6px; padding: 2px 8px; margin-bottom: 12px;
+    }
+    .stack-card b { display: block; font-size: 0.98rem; margin-bottom: 4px; }
+    .stack-card > span { display: block; font-size: 0.78rem; color: var(--faint); font-family: var(--mono); margin-bottom: 10px; }
+    .stack-card p { color: var(--muted); font-size: 0.85rem; }
+    @media (max-width: 980px) { .stack-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) { .stack-grid { grid-template-columns: 1fr; } }
+
+    /* ---------- Roadmap ---------- */
+    .timeline { position: relative; max-width: 760px; margin-inline: auto; display: grid; gap: 24px; padding-left: 38px; }
+    .timeline::before {
+      content: ""; position: absolute; left: 12px; top: 8px; bottom: 8px; width: 2px;
+      background: rgba(148, 163, 184, 0.14); border-radius: 2px;
+    }
+    .tl-fill {
+      position: absolute; left: 12px; top: 8px; bottom: 8px; width: 2px;
+      background: var(--grad); border-radius: 2px;
+      transform: scaleY(0); transform-origin: top center;
+    }
+    @supports (animation-timeline: view()) {
+      html.sda .tl-fill {
+        transition: none;
+        animation: growY2 linear both;
+        animation-timeline: view();
+        animation-range: entry 20% cover 82%;
+      }
+      @keyframes growY2 { to { transform: scaleY(1); } }
+    }
+    .tl-item {
+      position: relative; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px 24px; background: var(--surface);
+      transition: border-color .35s, background .35s, box-shadow .35s;
+    }
     .tl-item::before {
-      content: ""; position: absolute; left: -39px; top: 21px; width: 12px; height: 12px; border-radius: 50%;
-      background: var(--bg); border: 2px solid var(--green); box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.12);
+      content: ""; position: absolute; left: -33px; top: 26px; width: 12px; height: 12px;
+      border-radius: 50%; background: var(--bg); border: 2px solid var(--border-strong);
+      transition: background .35s, border-color .35s, box-shadow .35s;
     }
-    .tl-item.done::before { background: var(--green); }
-    .tl-item.now::before { border-color: var(--amber); box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.12); animation: pulse 2s infinite; }
-    .tl-item.now::after {
-      content: "agora"; position: absolute; left: -39px; top: 40px; font-family: var(--mono);
-      font-size: 0.6rem; color: var(--amber); letter-spacing: .08em; text-transform: uppercase;
+    .tl-item.lit {
+      border-color: rgba(52, 211, 153, 0.4); background: var(--surface-hover);
+      box-shadow: 0 0 34px rgba(52, 211, 153, 0.07);
     }
-    .tl-status { font-family: var(--mono); font-size: 0.66rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
-    .tl-item.done .tl-status { color: var(--green); }
-    .tl-item.now .tl-status { color: var(--amber); }
-    .tl-item.next .tl-status { color: var(--faint); }
-    .tl-item.next::before { border-color: var(--faint); box-shadow: none; }
-    .tl-item h3 { font-size: 1rem; margin: 2px 0 4px; }
-    .tl-item p { color: var(--muted); font-size: 0.88rem; max-width: 70ch; }
+    .tl-item.lit::before {
+      background: var(--green); border-color: var(--green);
+      box-shadow: 0 0 14px rgba(52, 211, 153, 0.75);
+    }
+    .tl-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .tl-top h3 { font-size: 1rem; letter-spacing: -0.01em; }
+    .tl-status {
+      font-family: var(--mono); font-size: 0.66rem; font-weight: 700; letter-spacing: 0.09em;
+      text-transform: uppercase; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+    }
+    .st-done { color: var(--green); background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.32); }
+    .st-progress { color: var(--amber); background: rgba(251, 191, 36, 0.09); border: 1px solid rgba(251, 191, 36, 0.32); }
+    .st-plan { color: var(--muted); background: var(--surface); border: 1px solid var(--border); }
+    .tl-item p { color: var(--muted); font-size: 0.9rem; }
+    .tl-item code { font-family: var(--mono); font-size: 0.82em; color: var(--green); }
 
-    /* equipe */
-    .team-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-    .agent {
-      border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 20px;
-      background: var(--surface); text-align: center; transition: border-color .2s, transform .2s;
+    /* ---------- Equipe ---------- */
+    .team-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .person {
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 26px;
+      background: var(--surface); transition: transform .2s, border-color .2s;
     }
-    .agent:hover { border-color: rgba(34, 211, 238, 0.4); transform: translateY(-3px); }
+    .person:hover { transform: translateY(-4px); border-color: rgba(52, 211, 153, 0.4); }
     .avatar {
-      width: 48px; height: 48px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center;
-      font-family: var(--mono); font-weight: 700; font-size: 0.9rem;
-      background: linear-gradient(135deg, rgba(34, 211, 238, 0.18), rgba(52, 211, 153, 0.18));
-      border: 1px solid var(--border-strong);
+      width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center;
+      font-family: var(--mono); font-weight: 700; font-size: 1.05rem; color: var(--green);
+      background: linear-gradient(135deg, rgba(34, 211, 238, 0.22), rgba(52, 211, 153, 0.22));
+      border: 1px solid var(--border-strong); margin-bottom: 16px;
     }
-    .agent b { display: block; font-size: 0.95rem; margin-bottom: 4px; }
-    .agent span { font-size: 0.8rem; color: var(--muted); }
-    .agents-note { margin-top: 20px; color: var(--faint); font-size: 0.85rem; text-align: center; }
-    @media (max-width: 860px) { .team-grid { grid-template-columns: 1fr 1fr; } }
+    .person b { display: block; font-size: 1rem; }
+    .person > span { font-size: 0.78rem; color: var(--cyan); font-family: var(--mono); }
+    .person p { color: var(--muted); font-size: 0.88rem; margin-top: 10px; }
+    @media (max-width: 860px) { .team-grid { grid-template-columns: 1fr; } }
 
-    /* footer */
-    footer { border-top: 1px solid var(--border); padding: 40px 0 48px; margin-top: 40px; }
-    .foot { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; align-items: center; }
-    .foot p { color: var(--faint); font-size: 0.84rem; }
-    .foot code { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
-    .foot-links { display: flex; gap: 18px; font-size: 0.84rem; }
-    .foot-links a { color: var(--muted); }
-    .foot-links a:hover { color: var(--text); }
+    /* ---------- Footer ---------- */
+    footer { border-top: 1px solid var(--border); padding: 48px 0 36px; background: rgba(148, 163, 184, 0.02); }
+    .foot-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 36px; }
+    .foot-brand p { color: var(--muted); font-size: 0.88rem; margin-top: 12px; max-width: 40ch; }
+    footer h4 { font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text); margin-bottom: 14px; }
+    footer ul { list-style: none; display: grid; gap: 9px; }
+    footer ul a, footer ul li { color: var(--muted); font-size: 0.88rem; }
+    footer ul a:hover { color: var(--green); }
+    .foot-bottom {
+      margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;
+      color: var(--faint); font-size: 0.8rem;
+    }
+    .foot-bottom code { font-family: var(--mono); font-size: 0.95em; color: var(--muted); }
+    .to-top { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); transition: color .15s; }
+    .to-top:hover { color: var(--green); }
 
-    /* reveal */
-    .reveal { opacity: 0; transform: translateY(22px); transition: opacity .6s ease, transform .6s ease; }
-    .reveal.visible { opacity: 1; transform: none; }
+    /* Elementos scrub ficam visíveis quando o navegador tem suporte
+       nativo (o CSS cuida deles; o observer JS os ignora). */
+    html.sda [data-animate].scrub {
+      opacity: 1;
+      transform: none;
+      clip-path: inset(0 0 0 0);
+      transition: none;
+    }
+
+    @media (max-width: 720px) {
+      .hero { grid-template-columns: 1fr; padding: 56px 0 40px; gap: 42px; }
+      .radar { display: none; }
+      @supports (animation-timeline: view()) {
+        html.sda .hero { animation: none; }
+      }
+      .install-grid { grid-template-columns: 1fr; }
+      .foot-grid { grid-template-columns: 1fr; gap: 28px; }
+      section.block { padding: 64px 0; }
+      html { scroll-padding-top: 76px; }
+    }
+
+    /* ---------- Movimento reduzido ---------- */
     @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
       html { scroll-behavior: auto; }
-      .reveal { opacity: 1; transform: none; }
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      html.js [data-animate], html.js .h-in, html.js .tl-item, html.js .term-lines .tr,
+      html.js .req-chips .chip, html.js .shot-layer, html.js .shot .pchip, html.js .shot .bar,
+      html.js .arrow .grow, html.js .tl-fill {
+        animation: none !important; transition: none !important;
+        opacity: 1 !important; transform: none !important; clip-path: inset(0 0 0 0);
+      }
+      html.sda .hero, html.sda .arrow .grow, html.sda .tl-fill, .sweep, .grow svg {
+        animation: none !important;
+      }
     }
   </style>
 </head>
 <body>
   <div class="backdrop" aria-hidden="true"></div>
 
-  <!-- ============ NAV ============ -->
   <header class="nav">
     <div class="container nav-inner">
-      <a class="brand" href="#topo" aria-label="PortWatch — início">
+      <a class="brand" href="#topo" aria-label="PortWatch — voltar ao topo">
         <svg width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-          <circle cx="16" cy="16" r="13" stroke="#34d399" stroke-width="2"/>
-          <circle cx="16" cy="16" r="7.5" stroke="#34d399" stroke-opacity=".45" stroke-width="2"/>
-          <circle cx="16" cy="16" r="2.4" fill="#34d399"/>
-          <line x1="16" y1="16" x2="26.5" y2="9.5" stroke="#22d3ee" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="16" cy="16" r="14" stroke="#34d399" stroke-width="2"/>
+          <circle cx="16" cy="16" r="8" stroke="#34d399" stroke-opacity=".45" stroke-width="2"/>
+          <circle cx="16" cy="16" r="2.5" fill="#34d399"/>
+          <path d="M16 16 L27 9" stroke="#22d3ee" stroke-width="2" stroke-linecap="round"/>
         </svg>
         Port<em>Watch</em>
       </a>
-
+      <button id="menuBtn" class="menu-btn" aria-expanded="false" aria-controls="navLinks" aria-label="Abrir menu">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="15" y2="18"/>
+        </svg>
+      </button>
       <nav class="links" id="navLinks" aria-label="Navegação principal">
         <a href="#sobre">O que é</a>
+        <a href="#preview">Preview</a>
         <a href="#funcionalidades">Funcionalidades</a>
-        <a href="#api">API</a>
         <a href="#arquitetura">Arquitetura</a>
         <a href="#seguranca">Segurança</a>
+        <a href="#instalacao">Instalação</a>
         <a href="#roadmap">Roadmap</a>
       </nav>
-
-      <div style="display:flex; gap:10px; align-items:center;">
-        <a class="nav-cta" href="#arquitetura"><span class="dot" aria-hidden="true"></span><span class="label">v1 · em desenvolvimento</span></a>
-        <button class="menu-btn" id="menuBtn" aria-label="Abrir menu" aria-expanded="false">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-        </button>
-      </div>
+      <a class="nav-cta" href="#instalacao"><span class="dot" aria-hidden="true"></span><span class="label">somente-observação</span></a>
     </div>
   </header>
 
   <main id="topo">
-    <!-- ============ HERO ============ -->
-    <section class="container hero">
+
+    <!-- ================= HERO ================= -->
+    <section class="container hero" aria-label="Apresentação">
       <div>
-        <span class="badge"><span class="dot" aria-hidden="true"></span> Fase 4 — API real · em andamento</span>
-        <h1>Seu homelab Docker<br />sob <span class="grad">vigilância total</span>.</h1>
-        <p class="lead">
-          <strong>PortWatch</strong> é uma plataforma de monitoramento de homelab que descobre
-          containers Docker e seus status, mapeia portas publicadas, detecta portas ocupadas
-          e livres no host e inspeciona redes Docker — entregando tudo através de uma
-          <strong>API REST</strong> e de um <strong>dashboard web</strong>.
-          E o mais importante: <strong>sem tocar em nada.</strong>
-        </p>
-        <div class="cta-row">
-          <a class="btn btn-primary" href="#funcionalidades">
-            O que ele faz
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+        <span class="badge h-in h-d1"><span class="dot" aria-hidden="true"></span>EM DESENVOLVIMENTO ATIVO · FASE 4</span>
+        <h1 class="h-in h-d2">Sua homelab Docker,<br />finalmente <span class="grad">visível</span>.</h1>
+        <p class="lead h-in h-d3">O PortWatch descobre containers, portas publicadas e livres no host e redes Docker — e expõe tudo por uma API REST de <strong>somente-observação</strong>. Leitura via proxy; nunca uma escrita no daemon.</p>
+        <div class="cta-row h-in h-d4">
+          <a class="btn btn-primary" href="#preview">
+            Explorar o preview
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
           </a>
-          <a class="btn btn-ghost" href="#arquitetura">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>
-            Ver a arquitetura
-          </a>
+          <a class="btn btn-ghost" href="#funcionalidades">Ver a API</a>
         </div>
       </div>
 
-      <div class="terminal-wrap">
+      <div class="terminal-wrap h-in h-d4">
         <div class="radar" aria-hidden="true">
-          <div class="ring"></div><div class="ring"></div><div class="ring"></div>
-          <div class="sweep"></div>
+          <i class="ring"></i><i class="ring"></i><i class="ring"></i>
+          <i class="sweep"></i>
         </div>
-        <div class="terminal" role="img" aria-label="Exemplo ilustrativo de consulta à API do PortWatch">
-          <div class="terminal-bar"><i></i><i></i><i></i><span>portwatch — api local</span></div>
-          <div class="terminal-body" id="termBody">
-            <div class="t-cmd"><span class="p">$</span> curl -s http://127.0.0.1:<span class="flag">8000</span>/api/v1/system/summary</div>
-            <div id="termOut"></div>
-            <span class="cursor" aria-hidden="true"></span>
-          </div>
-          <div class="t-caption">resposta ilustrativa · dados derivados ao vivo do Docker/host</div>
+        <div class="terminal" role="img" aria-label="Terminal exibindo resposta ilustrativa da API do PortWatch">
+          <div class="terminal-bar" aria-hidden="true"><i></i><i></i><i></i><span>portwatch — api</span></div>
+          <div class="terminal-body" id="termOut"></div>
+          <div class="t-caption">exemplo ilustrativo · dados fictícios</div>
         </div>
       </div>
     </section>
 
-    <!-- ============ STATS ============ -->
-    <div class="stats">
+    <!-- ================= STATS ================= -->
+    <section class="stats" aria-label="Números do projeto">
       <div class="container stats-grid">
-        <div class="stat"><b>100%</b><span>somente-observação na v1</span></div>
-        <div class="stat"><b>0</b><span>bancos de dados — estado vivo em memória</span></div>
-        <div class="stat"><b>GET-only</b><span>acesso ao socket Docker, via proxy isolado</span></div>
-        <div class="stat"><b>5 ADRs</b><span>decisões de arquitetura registradas</span></div>
+        <div class="stat"><b data-count="100" data-suffix="%">0%</b><span>somente-observação</span></div>
+        <div class="stat"><b data-count="0" data-from="16">16</b><span>escritas no daemon</span></div>
+        <div class="stat"><b>GET-only</b><span>API REST FastAPI</span></div>
+        <div class="stat"><b data-count="5">0</b><span>ADRs registrados</span></div>
       </div>
-    </div>
+    </section>
 
-    <!-- ============ SOBRE ============ -->
-    <section class="block container reveal" id="sobre">
-      <div class="section-head">
-        <p class="kicker">Visão geral</p>
-        <h2>O que é o PortWatch?</h2>
-        <p class="section-lead">
-          PortWatch é uma plataforma open-source de monitoramento para homelabs que rodam cargas
-          em Docker. Em quem confiar quando a pergunta é <em>"que porta está livre?"</em>,
-          <em>"quem está publicando a 8080?"</em> ou <em>"quais containers caíram?"</em>?
-          O PortWatch responde isso ao vivo, sem banco de dados e sem jamais alterar o ambiente monitorado.
-        </p>
+    <!-- ================= SOBRE ================= -->
+    <section id="sobre" class="block container">
+      <div class="section-head" data-animate>
+        <p class="kicker">01 · O que é</p>
+        <h2>Observação sem intrusão</h2>
+        <p class="section-lead">PortWatch é um projeto pessoal de monitoramento para homelabs com Docker. Ele responde, em um só lugar: <em>o que está rodando, em quais portas, em quais redes</em> — sem instalar nada nos containers e sem arriscar o daemon.</p>
       </div>
-
       <div class="about-grid">
-        <div>
-          <p style="color:var(--muted)">
-            A plataforma combina duas fontes de verdade: a <strong style="color:var(--text)">API do Docker</strong>
-            (alcançada por um proxy de socket restrito a leitura) e uma sonda leve no namespace de rede do host.
-            Um <strong style="color:var(--text)">Collector</strong>, embutido no processo do backend, consulta essas
-            fontes em ciclo contínuo e publica snapshots atômicos em memória. Sobre eles, uma API REST serve
-            containers, redes, portas e um resumo do sistema — consumidos por um dashboard reativo.
-          </p>
+        <div class="about-text" data-animate>
+          <p>A coleta acontece pelo <strong>Docker Engine API</strong>, sempre intermediada pelo <strong>docker-socket-proxy</strong>: um componente que expõe apenas os endpoints de leitura do daemon. O módulo de coleta (<strong>netprobe</strong>) transforma essas respostas em um resumo consolidado, servido pela API <strong>FastAPI</strong> em <code>/api/v1/system/summary</code>.</p>
+          <p>O consumo é livre: dashboard web, terminal com <code>curl</code> ou qualquer cliente HTTP. Cada decisão estrutural está registrada nos <strong>ADRs</strong> (Architecture Decision Records) do repositório.</p>
           <div class="about-cols">
-            <div class="mini-card">
-              <b>🎯 Objetivo do projeto</b>
-              <p>Dar visibilidade completa e instantânea do estado de um homelab Docker — containers, portas e redes — com o mínimo de infraestrutura e o máximo de segurança.</p>
-            </div>
-            <div class="mini-card">
-              <b>🧭 Princípio central</b>
-              <p>Observar, nunca agir. Nenhum endpoint inicia, para ou reinicia containers. Estado é sempre rederivado ao vivo da realidade — nunca persistido nem presumido.</p>
-            </div>
+            <div class="mini-card"><b>Somente leitura</b><p>Nenhuma rota de escrita. O backend não conversa direto com o socket do Docker.</p></div>
+            <div class="mini-card"><b>Sem agente invasivo</b><p>Nada é instalado dentro dos containers observados. A fonte é a Engine API.</p></div>
+            <div class="mini-card"><b>Decisões documentadas</b><p>Cada escolha relevante vira um ADR versionado no repositório.</p></div>
+            <div class="mini-card"><b>Pensado para homelab</b><p>Leve, auto-hospedado e simples de rodar com um <code>make dev</code>.</p></div>
           </div>
         </div>
-
-        <div class="objective-card">
+        <aside class="objective-card" data-animate="left" style="--d:120ms">
           <h3>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.5-2.5 8-7 8-12V5l-8-3-8 3v5c0 5 2.5 9.5 8 12z"/></svg>
-            Por que ele existe
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+            Objetivo
           </h3>
           <ul>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Saber <strong>qual porta está livre</strong> antes de publicar um novo serviço — sem sair caçando com <code style="font-family:var(--mono);font-size:.85em">netstat</code>.</span></li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Ver <strong>quem publica o quê</strong>: o mapa completo entre portas do host e containers.</span></li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Detectar containers <strong>parados ou reiniciados</strong> num relance.</span></li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Entender a <strong>topologia de redes Docker</strong> do ambiente.</span></li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Zero risco: o único privilégio elevado fica confinado a componentes minúsculos e auditáveis.</span></li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Descobrir containers, imagens e estados em execução</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Mapear portas publicadas e portas livres no host</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Listar redes Docker e seus participantes</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Consolidar tudo em uma resposta única da API</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Visualizar rapidamente em um dashboard web</li>
           </ul>
-        </div>
+        </aside>
       </div>
     </section>
 
-    <!-- ============ FUNCIONALIDADES ============ -->
-    <section class="block container reveal" id="funcionalidades">
-      <div class="section-head">
-        <p class="kicker">Capacidades</p>
-        <h2>O que o PortWatch faz</h2>
-        <p class="section-lead">Tudo que a v1 entrega — cada dado derivado ao vivo das fontes, nunca persistido.</p>
+    <!-- ================= PREVIEW ================= -->
+    <section id="preview" class="block container">
+      <div class="section-head" data-animate>
+        <p class="kicker">02 · Preview</p>
+        <h2>Um painel, toda a história</h2>
+        <p class="section-lead">O dashboard resume o estado do host em três camadas: números de topo, atividade recente e o mapa de portas. Role e veja cada camada se revelar.</p>
       </div>
 
+      <div class="shot-zone" data-animate="zoom">
+        <div class="shot" id="dashShot" role="img" aria-label="Prévia ilustrativa do dashboard do PortWatch com dados fictícios">
+          <div class="shot-bar shot-layer" aria-hidden="true"><i></i><i></i><i></i><span class="shot-url">localhost:5173 — PortWatch</span></div>
+          <div class="shot-body">
+            <div class="shot-side shot-layer sl-side" aria-hidden="true">
+              <span class="side-item on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span>Visão geral</span></span>
+              <span class="side-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1"/><rect x="3" y="13" width="18" height="7" rx="1"/></svg><span>Containers</span></span>
+              <span class="side-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg><span>Portas</span></span>
+              <span class="side-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="m7 11 10-5M7 13l10 5"/></svg><span>Redes</span></span>
+              <span class="side-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 17V7m5 10V4m5 13v-6m5 6V9"/></svg><span>Métricas</span></span>
+            </div>
+            <div class="shot-main">
+              <div class="kpis shot-layer sl-kpis" aria-hidden="true">
+                <div class="kpi"><small>containers</small><b>9<em>+2 hoje</em></b></div>
+                <div class="kpi"><small>portas usadas</small><b>14<em>de 31 ativas</em></b></div>
+                <div class="kpi"><small>redes docker</small><b>5<em>todas internas</em></b></div>
+              </div>
+              <div class="panel shot-layer sl-panel" aria-hidden="true">
+                <div class="panel-head"><span>containers em execução · últimas 12h</span><span>fictício</span></div>
+                <div class="chart">
+                  <i class="bar" style="--h:42%;--i:0"></i><i class="bar" style="--h:58%;--i:1"></i><i class="bar" style="--h:50%;--i:2"></i><i class="bar" style="--h:66%;--i:3"></i><i class="bar" style="--h:74%;--i:4"></i><i class="bar" style="--h:62%;--i:5"></i><i class="bar" style="--h:80%;--i:6"></i><i class="bar" style="--h:70%;--i:7"></i><i class="bar" style="--h:88%;--i:8"></i><i class="bar" style="--h:78%;--i:9"></i><i class="bar" style="--h:92%;--i:10"></i><i class="bar" style="--h:84%;--i:11"></i>
+                </div>
+                <div class="chart-axis" aria-hidden="true"><span>-12h</span><span>-10h</span><span>-8h</span><span>-6h</span><span>-4h</span><span>-2h</span><span>agora</span></div>
+              </div>
+              <div class="panel shot-layer sl-panel" aria-hidden="true">
+                <div class="panel-head"><span>mapa de portas do host</span><span>fictício</span></div>
+                <div class="portmap">
+                  <span class="pchip pub" style="--i:0"><i></i>:443 · nginx-proxy</span>
+                  <span class="pchip pub" style="--i:1"><i></i>:80 · nginx-proxy</span>
+                  <span class="pchip pub" style="--i:2"><i></i>:3000 · grafana</span>
+                  <span class="pchip busy" style="--i:3"><i></i>:5432 · postgres</span>
+                  <span class="pchip busy" style="--i:4"><i></i>:22 · sshd</span>
+                  <span class="pchip free" style="--i:5"><i></i>:8080 · livre</span>
+                  <span class="pchip free" style="--i:6"><i></i>:9090 · livre</span>
+                  <span class="pchip free" style="--i:7"><i></i>:6379 · livre</span>
+                </div>
+                <div class="legend">
+                  <b class="l-pub"><i></i>publicada</b>
+                  <b class="l-busy"><i></i>ocupada (não-publicada)</b>
+                  <b class="l-free"><i></i>livre no host</b>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="shot-note">Interface ilustrativa com dados fictícios — o dashboard real consome <code>GET /api/v1/system/summary</code>.</p>
+    </section>
+
+    <!-- ================= FUNCIONALIDADES ================= -->
+    <section id="funcionalidades" class="block container">
+      <div class="section-head" data-animate>
+        <p class="kicker">03 · Funcionalidades</p>
+        <h2>O que ele faz hoje</h2>
+        <p class="section-lead">Cada capacidade abaixo já tem implementação ou ADR correspondente no repositório.</p>
+      </div>
       <div class="features-grid">
-        <article class="feature">
-          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></div>
+        <article class="feature" data-animate>
+          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1"/><rect x="3" y="13" width="18" height="7" rx="1"/></svg></div>
           <h3>Descoberta de containers</h3>
-          <p>Inventário ao vivo dos containers Docker: nome, imagem, status e detalhes por container — atualizado continuamente pelo Collector.</p>
+          <p>O <code>netprobe</code> lista containers em execução com imagem, estado e tempo de vida direto da Engine API.</p>
         </article>
-
-        <article class="feature">
-          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7v10M15 7v10M4 10h16M4 14h16"/><rect x="2.5" y="4" width="19" height="16" rx="2.5"/></svg></div>
-          <h3>Visão unificada de portas</h3>
-          <p>Cruzamento entre as portas publicadas pelos containers e as portas escutando no host: <code>/api/v1/ports</code> devolve a visão consolidada.</p>
+        <article class="feature" data-animate style="--d:80ms">
+          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="1.6" fill="currentColor" stroke="none"/><circle cx="14" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1.6" fill="currentColor" stroke="none"/></svg></div>
+          <h3>Mapa de portas</h3>
+          <p>Cruza portas publicadas pelos containers com as portas ocupadas no host para revelar também as <code>livres</code>.</p>
         </article>
-
-        <article class="feature">
-          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/></svg></div>
-          <h3>Portas livres no host</h3>
-          <p>A sonda <code>netprobe</code> lê <code>/proc/net/*</code> do host e reporta portas ocupadas — o resto do range fica marcado como disponível (<code>/ports/available</code>).</p>
-        </article>
-
-        <article class="feature">
-          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2L6 15.8M12 7.2l6 8.6M7.2 18h9.6"/></svg></div>
+        <article class="feature" data-animate style="--d:160ms">
+          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="m7 11 10-5M7 13l10 5"/></svg></div>
           <h3>Redes Docker</h3>
-          <p>Listagem e detalhe das redes gerenciadas pelo Docker — bridges, overlays e a quais containers cada uma se conecta.</p>
+          <p>Inventaria redes e quem participa delas — base para entender isolamento e comunicação entre serviços.</p>
         </article>
+        <article class="feature" data-animate>
+          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+          <h3>API REST consolidada</h3>
+          <p><code>FastAPI</code> com resposta única em <code>/api/v1/system/summary</code> — pronta para dashboards, scripts e automações.</p>
+        </article>
+        <article class="feature" data-animate style="--d:80ms">
+          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg></div>
+          <h3>Dashboard web</h3>
+          <p>Interface React + Vite para consulta rápida do estado do host, alimentada pela API de observação.</p>
+        </article>
+        <article class="feature" data-animate style="--d:160ms">
+          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+          <h3>Seguro por construção</h3>
+          <p>Toda leitura passa pelo <code>docker-socket-proxy</code>. Escrita no daemon? Estruturalmente impossível.</p>
+        </article>
+      </div>
 
-        <article class="feature">
-          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></div>
-          <h3>Resumo do sistema</h3>
-          <p>Um endpoint de nível-dashboard (<code>/system/summary</code>) que condensa o estado global: containers, redes, portas e saúde do Collector.</p>
-        </article>
-
-        <article class="feature">
-          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
-          <h3>Métricas Prometheus</h3>
-          <p>Logs estruturados + endpoint de métricas para scrape do Prometheus do próprio usuário — séries temporais ficam na sua stack, não dentro do PortWatch.</p>
-        </article>
+      <div style="margin-top:44px" data-animate>
+        <div class="api-panel">
+          <div class="api-head"><span>endpoints disponíveis</span><code>base: http://localhost:8000</code></div>
+          <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/healthz</span><span class="ep-desc">liveness do serviço</span></div>
+          <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/api/v1/system/summary</span><span class="ep-desc">resumo consolidado do host</span></div>
+          <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/docs</span><span class="ep-desc">Swagger UI gerado automaticamente</span></div>
+        </div>
       </div>
     </section>
 
-    <!-- ============ API ============ -->
-    <section class="block container reveal" id="api">
-      <div class="section-head">
-        <p class="kicker">Contrato</p>
-        <h2>Uma API REST, somente leitura</h2>
-        <p class="section-lead">
-          Backend FastAPI (Python 3.12) com spec OpenAPI automática em <code style="font-family:var(--mono);color:var(--green)">/openapi.json</code>
-          e documentação interativa em <code style="font-family:var(--mono);color:var(--green)">/docs</code>.
-          Todos os endpoints de dados são GET — a API não muta nada no ambiente.
-        </p>
+    <!-- ================= ARQUITETURA ================= -->
+    <section id="arquitetura" class="block container">
+      <div class="section-head" data-animate>
+        <p class="kicker">04 · Arquitetura</p>
+        <h2>Fluxo somente-leitura, de ponta a ponta</h2>
+        <p class="section-lead">Do daemon Docker até a sua tela, nenhum componente consegue alterar o ambiente observado.</p>
       </div>
-
-      <div class="api-panel">
-        <div class="api-head">
-          <span>http://127.0.0.1:8000</span>
-          <code>base URL local · bind loopback por padrão</code>
+      <div class="arch" data-animate="wipe">
+        <div class="arch-row">
+          <div class="node host"><span class="tag">host</span><b>Homelab</b><small>Docker Engine + containers em execução, redes e portas publicadas.</small></div>
         </div>
-        <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/health · /health/ready</span><span class="ep-desc">liveness e readiness real do serviço</span></div>
-        <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/api/v1/containers</span><span class="ep-desc">inventário de containers</span></div>
-        <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/api/v1/containers/{id}</span><span class="ep-desc">detalhe de um container</span></div>
-        <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/api/v1/networks</span><span class="ep-desc">redes Docker</span></div>
-        <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/api/v1/networks/{id}</span><span class="ep-desc">detalhe de uma rede</span></div>
-        <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/api/v1/ports</span><span class="ep-desc">visão unificada: host / publicadas / livres</span></div>
-        <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/api/v1/ports/available?from=&amp;to=</span><span class="ep-desc">portas livres num intervalo</span></div>
-        <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/api/v1/system/summary</span><span class="ep-desc">resumo de nível dashboard</span></div>
-        <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/metrics</span><span class="ep-desc">métricas Prometheus (scrape)</span></div>
+        <div class="arrow scrub"><span class="grow"><svg width="18" height="34" viewBox="0 0 18 34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M9 2v24m0 0-5-5m5 5 5-5"/></svg></span></div>
+        <div class="arch-row">
+          <div class="node proxy"><span class="tag">read-only</span><b>docker-socket-proxy</b><small>Fachada que expõe apenas os endpoints de leitura da Engine API. Escritas são bloqueadas aqui.</small></div>
+        </div>
+        <div class="arrow scrub"><span class="grow"><svg width="18" height="34" viewBox="0 0 18 34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M9 2v24m0 0-5-5m5 5 5-5"/></svg></span></div>
+        <div class="arch-row">
+          <div class="node core"><span class="tag">fastapi</span><b>PortWatch backend</b><small>O <strong>netprobe</strong> coleta containers, portas e redes; a API serve o resumo consolidado.</small></div>
+        </div>
+        <div class="arrow scrub"><span class="grow"><svg width="18" height="34" viewBox="0 0 18 34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M9 2v24m0 0-5-5m5 5 5-5"/></svg></span></div>
+        <div class="arch-row">
+          <div class="node"><span class="tag">ui</span><b>Dashboard web</b><small>React + Vite consultando a API de observação.</small></div>
+          <div class="node"><span class="tag">cli</span><b>curl / scripts</b><small>Qualquer cliente HTTP consome o mesmo resumo.</small></div>
+        </div>
+        <p class="arch-note">Decisões detalhadas nos <strong>ADRs 0001–0005</strong>: escolha do proxy, formato do resumo, política <code>somente-observação</code> e o ambiente de desenvolvimento isolado (<code>portwatch.env=dev-sandbox</code>).</p>
       </div>
     </section>
 
-    <!-- ============ ARQUITETURA ============ -->
-    <section class="block container reveal" id="arquitetura">
-      <div class="section-head">
-        <p class="kicker">Como funciona</p>
-        <h2>Arquitetura com privilégio mínimo</h2>
-        <p class="section-lead">
-          Cada componente tem exatamente o acesso de que precisa — e nada mais. Nenhuma parte do PortWatch
-          monta o socket Docker diretamente; nenhum componente além do <code style="font-family:var(--mono);color:var(--green)">netprobe</code> usa rede do host.
-        </p>
+    <!-- ================= SEGURANÇA ================= -->
+    <section id="seguranca" class="block container">
+      <div class="section-head" data-animate>
+        <p class="kicker">05 · Segurança</p>
+        <h2>Vigiar sem tocar</h2>
+        <p class="section-lead">Monitorar não deveria criar risco. O PortWatch foi desenhado para ser o componente menos privilegiado do host.</p>
       </div>
-
-      <div class="arch">
-        <div class="arch-row">
-          <div class="node host">
-            <span class="tag">host linux</span>
-            <b>Docker Engine</b>
-            <small>Fonte primária: containers, redes, eventos e info do daemon.</small>
-          </div>
-          <div class="node host">
-            <span class="tag">netns do host</span>
-            <b>Pilhas de rede (/proc/net/*)</b>
-            <small>Tabelas TCP/UDP do kernel — a verdade sobre portas escutando no host.</small>
-          </div>
-        </div>
-
-        <div class="arrow" aria-hidden="true">
-          <svg width="18" height="26" viewBox="0 0 18 26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v18M3 15l6 7 6-7"/></svg>
-        </div>
-
-        <div class="arch-row">
-          <div class="node proxy">
-            <span class="tag">GET-only · :2375</span>
-            <b>docker-socket-proxy</b>
-            <small>Único container com o socket Docker montado — e mesmo assim restrito a leitura de CONTAINERS, NETWORKS, INFO, EVENTS, VERSION.</small>
-          </div>
-          <div class="node proxy">
-            <span class="tag">network_mode: host · :8088</span>
-            <b>netprobe</b>
-            <small>Sonda mínima que lê /proc/net/* do host. Sem nenhum acesso ao socket Docker.</small>
-          </div>
-        </div>
-
-        <div class="arrow" aria-hidden="true">
-          <svg width="18" height="26" viewBox="0 0 18 26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v18M3 15l6 7 6-7"/></svg>
-        </div>
-
-        <div class="arch-row">
-          <div class="node core">
-            <span class="tag">processo único</span>
-            <b>Backend — FastAPI + Collector</b>
-            <small>O Collector consulta as duas sondas em background (lifespan do FastAPI) e publica snapshots atômicos em memória, com TTL curto invalidado por eventos. Sem IPC, sem fila, sem banco (ADR-0001, ADR-0002).</small>
-          </div>
-        </div>
-
-        <div class="arrow" aria-hidden="true">
-          <svg width="18" height="26" viewBox="0 0 18 26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v18M3 15l6 7 6-7"/></svg>
-        </div>
-
-        <div class="arch-row">
-          <div class="node">
-            <span class="tag">:8000 → :5173</span>
-            <b>Dashboard web</b>
-            <small>React + TypeScript + Vite + TanStack Query + Recharts, consumindo a API via proxy <code style="font-family:var(--mono);font-size:.9em">/api/*</code>.</small>
-          </div>
-        </div>
-
-        <p class="arch-note">
-          No desenvolvimento, tudo roda contra um <strong>sandbox Docker isolado</strong> desta máquina
-          (<code>make dev-up</code>), protegido por um guard que resolve o endpoint Docker uma única vez e recusa
-          operar sobre qualquer daemon que não seja o Docker local de dev. Containers de teste carregam o label
-          <code>portwatch.env=dev-sandbox</code>.
-        </p>
-      </div>
-    </section>
-
-    <!-- ============ SEGURANÇA ============ -->
-    <section class="block container reveal" id="seguranca">
-      <div class="section-head">
-        <p class="kicker">Segurança por desenho</p>
-        <h2>Vigiar sem dar as chaves</h2>
-        <p class="section-lead">
-          Acesso ao socket Docker equivale a root no host. O PortWatch foi desenhado para nunca
-          concentrar esse poder — cada decisão abaixo está registrada em um ADR.
-        </p>
-      </div>
-
       <div class="sec-grid">
-        <div class="sec-card">
-          <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.5-2.5 8-7 8-12V5l-8-3-8 3v5c0 5 2.5 9.5 8 12z"/><path d="M9 12l2 2 4-4"/></svg></div>
-          <div>
-            <h3>Somente-observação</h3>
-            <p>Nenhum endpoint inicia, para, reinicia ou executa comando em containers monitorados. Ações de mutação estão fora de escopo até decisão explícita que revisaria a ADR-0003.</p>
-          </div>
+        <div class="sec-card" data-animate="left">
+          <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+          <div><h3>Acesso intermediado</h3><p>O <strong>docker-socket-proxy</strong> filtra a Engine API: só leitura chega ao daemon. O socket Unix nunca é montado diretamente.</p></div>
         </div>
-
-        <div class="sec-card">
-          <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
-          <div>
-            <h3>Socket Docker atrás de proxy GET-only</h3>
-            <p>O socket real só existe dentro do docker-socket-proxy, limitado a verbos de leitura. A aplicação conversa HTTP com ele — nunca monta /var/run/docker.sock (ADR-0003).</p>
-          </div>
+        <div class="sec-card" data-animate="right" style="--d:80ms">
+          <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/><circle cx="12" cy="12" r="10"/></svg></div>
+          <div><h3>Somente-observação</h3><p>Nenhuma rota inicia, para ou modifica containers. A política <code>somente-observa</code> vale para coleta e para a API.</p></div>
         </div>
-
-        <div class="sec-card">
-          <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"/><path d="M12 8v4M12 15h.01"/></svg></div>
-          <div>
-            <h3>Privilégios separados por componente</h3>
-            <p>O netprobe precisa ver a netns do host (network_mode: host) mas não enxerga o Docker. Todo o resto roda em rede normal e sem socket. O raio de dano de qualquer componente é mínimo.</p>
-          </div>
+        <div class="sec-card" data-animate="left" style="--d:160ms">
+          <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <div><h3>Configuração por ambiente</h3><p>Segredos e ajustes vivem em variáveis de ambiente — nunca no código. Desenvolvimento usa o perfil isolado <code>portwatch.env=dev-sandbox</code>.</p></div>
         </div>
-
-        <div class="sec-card">
-          <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg></div>
-          <div>
-            <h3>Loopback por padrão + token fora dele</h3>
-            <p>A API escuta em 127.0.0.1 por padrão; exposição em LAN/remoto é opt-in explícito e exige o token bearer estático da v1 (ADR-0004) — simples de auditar, sem contas nem OAuth.</p>
-          </div>
-        </div>
-
-        <div class="sec-card">
-          <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4.5v6c0 4.5-3.5 8.5-8 9.5-4.5-1-8-5-8-9.5v-6L12 2z"/><path d="M12 11a3 3 0 1 0 0-.01"/><path d="M12 13.5v3"/></svg></div>
-          <div>
-            <h3>Sandbox de dev com guard</h3>
-            <p>Todo desenvolvimento acontece num compose isolado, com label de identificação e um guard.sh que valida o alvo antes de subir/derrubar — imune a TOCTOU e a contextos Docker errados.</p>
-          </div>
-        </div>
-
-        <div class="sec-card">
-          <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></div>
-          <div>
-            <h3>Nada persistido</h3>
-            <p>Sem banco na v1 (ADR-0002): o estado vive em memória e volta do Docker a cada ciclo. Reiniciar o PortWatch não perde dado algum — não há segunda fonte de verdade para divergir.</p>
-          </div>
+        <div class="sec-card" data-animate="right" style="--d:240ms">
+          <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg></div>
+          <div><h3>Menor privilégio</h3><p>Container dedicado, capacidades mínimas e superfície reduzida: a API só responde <code>GET</code>.</p></div>
         </div>
       </div>
     </section>
 
-    <!-- ============ STACK ============ -->
-    <section class="block container reveal" id="stack">
-      <div class="section-head">
-        <p class="kicker">Tecnologia</p>
-        <h2>Stack aprovada</h2>
+    <!-- ================= INSTALAÇÃO ================= -->
+    <section id="instalacao" class="block container">
+      <div class="section-head" data-animate>
+        <p class="kicker">06 · Instalação</p>
+        <h2>Do clone ao resumo em minutos</h2>
+        <p class="section-lead">Sem mágica: o Makefile orquestra ambiente, testes e lint. O terminal ao lado mostra o caminho mínimo.</p>
+      </div>
+      <div class="install-grid">
+        <div class="term" data-animate>
+          <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><span class="term-title">instalação — loop ilustrativo</span></div>
+          <div class="term-lines" id="installTerm" aria-live="polite"></div>
+        </div>
+        <aside class="req-card" data-animate="right" style="--d:120ms">
+          <h3>Pré-requisitos</h3>
+          <p>Tudo que você precisa antes do primeiro <code>make dev</code>.</p>
+          <div class="req-chips" id="reqChips">
+            <span class="chip" style="--i:0">Docker 24+</span>
+            <span class="chip" style="--i:1">Docker Compose v2</span>
+            <span class="chip" style="--i:2">Python 3.11+</span>
+            <span class="chip" style="--i:3">Node.js 20+</span>
+            <span class="chip" style="--i:4">GNU make</span>
+          </div>
+          <p class="req-foot"><strong>Ambiente isolado:</strong> o desenvolvimento roda contra o perfil <code>portwatch.env=dev-sandbox</code>, com dados simulados — seu homelab real não é tocado.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ================= STACK ================= -->
+    <section id="stack" class="block container">
+      <div class="section-head" data-animate>
+        <p class="kicker">07 · Stack</p>
+        <h2>Ferramentas simples, decisões explícitas</h2>
       </div>
       <div class="stack-grid">
-        <div class="stack-col">
-          <b>// backend</b>
-          <div class="chips">
-            <span class="chip hl">Python 3.12</span><span class="chip hl">FastAPI</span><span class="chip">Pydantic v2</span>
-            <span class="chip">uv</span><span class="chip">Uvicorn</span><span class="chip">pytest</span>
-            <span class="chip">ruff</span><span class="chip">mypy</span>
-          </div>
-        </div>
-        <div class="stack-col">
-          <b>// frontend</b>
-          <div class="chips">
-            <span class="chip hl">React</span><span class="chip hl">TypeScript</span><span class="chip">Vite</span>
-            <span class="chip">Tailwind CSS</span><span class="chip">shadcn/ui</span><span class="chip">TanStack Query</span>
-            <span class="chip">Recharts</span><span class="chip">pnpm</span><span class="chip">Vitest</span>
-          </div>
-        </div>
-        <div class="stack-col">
-          <b>// infra &amp; observabilidade</b>
-          <div class="chips">
-            <span class="chip hl">Docker Compose</span><span class="chip">docker-socket-proxy</span><span class="chip">netprobe</span>
-            <span class="chip">logs estruturados</span><span class="chip">Prometheus /metrics</span><span class="chip">GitHub Actions (CI)</span>
-            <span class="chip">Makefile + guard.sh</span>
-          </div>
-        </div>
+        <div class="stack-card" data-animate><span class="sc-tag">backend</span><b>Python + FastAPI</b><span>uvicorn · pydantic</span><p>API tipada, validação automática e documentação OpenAPI gerada.</p></div>
+        <div class="stack-card" data-animate style="--d:70ms"><span class="sc-tag">coleta</span><b>netprobe</b><span>Docker Engine API</span><p>Módulo de observação que consulta containers, portas e redes via proxy.</p></div>
+        <div class="stack-card" data-animate style="--d:140ms"><span class="sc-tag">frontend</span><b>React + Vite</b><span>TypeScript</span><p>Dashboard enxuto, build rápido e componentes focados em leitura.</p></div>
+        <div class="stack-card" data-animate style="--d:210ms"><span class="sc-tag">qualidade</span><b>pytest + ruff + mypy</b><span>Makefile</span><p>Testes, lint e checagem de tipos a um comando de distância.</p></div>
       </div>
     </section>
 
-    <!-- ============ ROADMAP ============ -->
-    <section class="block container reveal" id="roadmap">
-      <div class="section-head">
-        <p class="kicker">Onde estamos</p>
-        <h2>Roadmap da v1</h2>
-        <p class="section-lead">Desenvolvimento incremental, fase a fase, sempre com CI verde e revisão obrigatória.</p>
+    <!-- ================= ROADMAP ================= -->
+    <section id="roadmap" class="block container">
+      <div class="section-head" data-animate>
+        <p class="kicker">08 · Roadmap</p>
+        <h2>Onde o projeto está</h2>
+        <p class="section-lead">Acompanhe a linha do tempo — ela se acende conforme você rola.</p>
       </div>
-
       <div class="timeline">
-        <div class="tl-item done">
-          <span class="tl-status">✓ concluída</span>
-          <h3>Fundação</h3>
-          <p>Estrutura do monorepo, sandbox Docker de dev com guard, CI, lint/formatação/tipagem e tela base do frontend.</p>
-        </div>
-        <div class="tl-item done">
-          <span class="tl-status">✓ concluída</span>
-          <h3>Collector + snapshots</h3>
-          <p>Coleta de containers, redes e portas via docker-socket-proxy e netprobe, com snapshots atômicos em memória e readiness real do backend.</p>
-        </div>
-        <div class="tl-item now">
-          <span class="tl-status">● Fase 4 — em andamento</span>
-          <h3>API real</h3>
-          <p>Rotas de containers, redes e resumo já leem os snapshots ao vivo. Falta integrar completamente as rotas de portas.</p>
-        </div>
-        <div class="tl-item next">
-          <span class="tl-status">○ próxima</span>
-          <h3>Dashboard conectado</h3>
-          <p>Ligar o frontend às APIs reais: visões de containers, redes, mapa de portas e busca de portas livres, com métricas Prometheus encerrando o MVP.</p>
-        </div>
+        <span class="tl-fill scrub" aria-hidden="true"></span>
+        <article class="tl-item" data-animate>
+          <div class="tl-top"><h3>Fase 1 — Descoberta</h3><span class="tl-status st-done">concluída</span></div>
+          <p>Coleta de containers, imagens, estados e portas publicadas direto da Docker Engine API.</p>
+        </article>
+        <article class="tl-item" data-animate>
+          <div class="tl-top"><h3>Fase 2 — API REST</h3><span class="tl-status st-done">concluída</span></div>
+          <p>Serviço FastAPI com <code>/api/v1/system/summary</code> consolidando o estado do host.</p>
+        </article>
+        <article class="tl-item" data-animate>
+          <div class="tl-top"><h3>Fase 3 — Dashboard web</h3><span class="tl-status st-progress">em andamento</span></div>
+          <p>Interface React para visualizar containers, portas e redes sem sair do navegador.</p>
+        </article>
+        <article class="tl-item" data-animate>
+          <div class="tl-top"><h3>Fase 4 — Sandbox de desenvolvimento</h3><span class="tl-status st-progress">em andamento</span></div>
+          <p>Ambiente isolado com perfil <code>portwatch.env=dev-sandbox</code>: dados simulados para evoluir sem tocar no homelab real.</p>
+        </article>
+        <article class="tl-item" data-animate>
+          <div class="tl-top"><h3>Próximo — Histórico &amp; tendências</h3><span class="tl-status st-plan">planejado</span></div>
+          <p>Persistência leve de séries temporais para comparar o estado do host ao longo dos dias (a definir em novo ADR).</p>
+        </article>
       </div>
     </section>
 
-    <!-- ============ EQUIPE ============ -->
-    <section class="block container reveal" id="equipe">
-      <div class="section-head">
-        <p class="kicker">Processo</p>
-        <h2>Construído por um esquadrão de agentes</h2>
-        <p class="section-lead">
-          O desenvolvimento é orquestrado por agentes de IA especializados, cada um em worktree e branch próprios,
-          com fronteiras rígidas por diretório. Nenhum agente aprova o próprio trabalho: todo PR passa pela revisão do Lead.
-        </p>
+    <!-- ================= EQUIPE ================= -->
+    <section id="equipe" class="block container">
+      <div class="section-head" data-animate>
+        <p class="kicker">09 · Equipe</p>
+        <h2>Humano no comando, agentes no código</h2>
+        <p class="section-lead">O projeto avança com desenvolvimento assistido por agentes de IA — sempre sob revisão e decisão humana.</p>
       </div>
-
       <div class="team-grid">
-        <div class="agent">
-          <div class="avatar">LD</div>
-          <b>Lead</b>
-          <span>Engenharia líder — dono do projeto, revisa e aprova todos os PRs e os contratos compartilhados</span>
+        <div class="person" data-animate>
+          <div class="avatar" aria-hidden="true">RQ</div>
+          <b>Rique</b><span>product owner · mantenedor</span>
+          <p>Idealiza o PortWatch, define prioridades, revisa cada ADR e aprova o que entra na main.</p>
         </div>
-        <div class="agent">
-          <div class="avatar">BE</div>
-          <b>Backend</b>
-          <span>API FastAPI + Collector em <code style="font-family:var(--mono);font-size:.85em">apps/backend</code></span>
+        <div class="person" data-animate style="--d:90ms">
+          <div class="avatar" aria-hidden="true">CC</div>
+          <b>Claude Code</b><span>engenharia líder</span>
+          <p>Lidera implementação de backend e infraestrutura, coordena entregas e mantém a coerência técnica.</p>
         </div>
-        <div class="agent">
-          <div class="avatar">FE</div>
-          <b>Frontend</b>
-          <span>Dashboard React em <code style="font-family:var(--mono);font-size:.85em">apps/web</code></span>
-        </div>
-        <div class="agent">
-          <div class="avatar">OPS</div>
-          <b>DevOps</b>
-          <span>Sandbox, CI e netprobe em <code style="font-family:var(--mono);font-size:.85em">infra/</code> e <code style="font-family:var(--mono);font-size:.85em">.github/</code></span>
+        <div class="person" data-animate style="--d:180ms">
+          <div class="avatar" aria-hidden="true">CX</div>
+          <b>Codex &amp; Copilot</b><span>colaboração multiagente</span>
+          <p>Revisões cruzadas, suíte de testes e evolução do frontend em paralelo com o backend.</p>
         </div>
       </div>
-      <p class="agents-note">Sob demanda: agentes <strong>Architect</strong> e <strong>Security</strong> para decisões estruturais (ADRs) e revisões de segurança.</p>
     </section>
   </main>
 
-  <!-- ============ FOOTER ============ -->
+  <!-- ================= FOOTER ================= -->
   <footer>
-    <div class="container foot">
-      <div>
-        <a class="brand" href="#topo" style="margin-bottom:8px">
-          <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-            <circle cx="16" cy="16" r="13" stroke="#34d399" stroke-width="2"/>
-            <circle cx="16" cy="16" r="2.4" fill="#34d399"/>
-            <line x1="16" y1="16" x2="26.5" y2="9.5" stroke="#22d3ee" stroke-width="2" stroke-linecap="round"/>
+    <div class="container foot-grid">
+      <div class="foot-brand">
+        <a class="brand" href="#topo">
+          <svg width="24" height="24" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <circle cx="16" cy="16" r="14" stroke="#34d399" stroke-width="2"/>
+            <circle cx="16" cy="16" r="8" stroke="#34d399" stroke-opacity=".45" stroke-width="2"/>
+            <circle cx="16" cy="16" r="2.5" fill="#34d399"/>
+            <path d="M16 16 L27 9" stroke="#22d3ee" stroke-width="2" stroke-linecap="round"/>
           </svg>
           Port<em>Watch</em>
         </a>
-        <p>Monitoramento de homelab — Docker, containers e portas.<br/>Projeto local · decisões em <code>docs/adr/</code> · somente-observação na v1.</p>
+        <p>Monitoramento somente-observação para homelabs Docker. Veja tudo; não toque em nada.</p>
       </div>
-      <div class="foot-links">
-        <a href="#sobre">O que é</a>
-        <a href="#arquitetura">Arquitetura</a>
-        <a href="#seguranca">Segurança</a>
-        <a href="#roadmap">Roadmap</a>
+      <div>
+        <h4>Projeto</h4>
+        <ul>
+          <li><a href="#sobre">O que é</a></li>
+          <li><a href="#preview">Preview do dashboard</a></li>
+          <li><a href="#roadmap">Roadmap</a></li>
+          <li><a href="#equipe">Equipe</a></li>
+        </ul>
       </div>
+      <div>
+        <h4>Técnico</h4>
+        <ul>
+          <li><a href="#funcionalidades">API REST</a></li>
+          <li><a href="#arquitetura">Arquitetura &amp; ADRs</a></li>
+          <li><a href="#seguranca">Modelo de segurança</a></li>
+          <li><a href="#instalacao">Instalação</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="container foot-bottom">
+      <span>PortWatch © 2026 · perfil dev: <code>portwatch.env=dev-sandbox</code></span>
+      <a class="to-top" href="#topo">
+        voltar ao topo
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+      </a>
     </div>
   </footer>
 
   <script>
-    // Menu mobile
-    const menuBtn = document.getElementById("menuBtn");
-    const navLinks = document.getElementById("navLinks");
-    menuBtn.addEventListener("click", () => {
-      const open = navLinks.classList.toggle("open");
-      menuBtn.setAttribute("aria-expanded", String(open));
-    });
-    navLinks.querySelectorAll("a").forEach((a) =>
-      a.addEventListener("click", () => navLinks.classList.remove("open"))
-    );
+  (function () {
+    "use strict";
+    var root = document.documentElement;
 
-    // Link ativo conforme scroll
-    const sections = [...document.querySelectorAll("main section[id]")];
-    const linkFor = {};
-    navLinks.querySelectorAll("a").forEach((a) => (linkFor[a.getAttribute("href").slice(1)] = a));
-    const spy = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            Object.values(linkFor).forEach((l) => l.classList.remove("active"));
-            linkFor[e.target.id]?.classList.add("active");
-          }
-        });
-      },
-      { rootMargin: "-40% 0px -55% 0px" }
-    );
-    sections.forEach((s) => spy.observe(s));
-
-    // Reveal on scroll
-    const revealer = new IntersectionObserver(
-      (entries) =>
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            e.target.classList.add("visible");
-            revealer.unobserve(e.target);
-          }
-        }),
-      { threshold: 0.12 }
-    );
-    document.querySelectorAll(".reveal").forEach((el) => revealer.observe(el));
-
-    // Terminal animado (loop)
-    const out = document.getElementById("termOut");
-    const lines = [
-      '<span class="j-punc">{</span>',
-      '  <span class="j-key">"portwatch_status"</span><span class="j-punc">:</span> <span class="j-str">"ok"</span><span class="j-punc">,</span>',
-      '  <span class="j-key">"docker_version"</span><span class="j-punc">:</span> <span class="j-str">"28.0.1"</span><span class="j-punc">,</span>',
-      '  <span class="j-key">"containers_running"</span><span class="j-punc">:</span> <span class="j-num">9</span><span class="j-punc">,</span>',
-      '  <span class="j-key">"containers_stopped"</span><span class="j-punc">:</span> <span class="j-num">3</span><span class="j-punc">,</span>',
-      '  <span class="j-key">"networks_total"</span><span class="j-punc">:</span> <span class="j-num">5</span><span class="j-punc">,</span>',
-      '  <span class="j-key">"ports_used_total"</span><span class="j-punc">:</span> <span class="j-num">14</span><span class="j-punc">,</span>',
-      '  <span class="j-key">"host_ports_enabled"</span><span class="j-punc">:</span> <span class="j-str" style="color:var(--green)">true</span><span class="j-punc">,</span>',
-      '  <span class="j-key">"collector_last_poll"</span><span class="j-punc">:</span> <span class="j-str">"2026-08-24T01:15:00Z"</span>',
-      '<span class="j-punc">}</span>'
-    ];
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    let timeouts = [];
-
-    function play() {
-      timeouts.forEach(clearTimeout);
-      timeouts = [];
-      out.innerHTML = "";
-      if (reduced) {
-        out.innerHTML = lines.map((l) => `<div class="t-line show">${l}</div>`).join("");
-        return;
+    /* suporte nativo a scroll-driven animations */
+    try {
+      if (window.CSS && CSS.supports && CSS.supports("animation-timeline", "view()")) {
+        root.classList.add("sda");
       }
-      lines.forEach((html, i) => {
-        const t = setTimeout(() => {
-          const div = document.createElement("div");
-          div.className = "t-line";
-          div.innerHTML = html;
-          requestAnimationFrame(() => div.classList.add("show"));
-          out.appendChild(div);
-          if (i === lines.length - 1) {
-            timeouts.push(setTimeout(play, 5200));
-          }
-        }, 650 + i * 350);
-        timeouts.push(t);
+    } catch (e) { /* navegador antigo: usa fallback por observer */ }
+
+    var reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+    /* ---------- menu mobile ---------- */
+    var menuBtn = document.getElementById("menuBtn");
+    var navLinks = document.getElementById("navLinks");
+    if (menuBtn && navLinks) {
+      menuBtn.addEventListener("click", function () {
+        var open = navLinks.classList.toggle("open");
+        menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        menuBtn.setAttribute("aria-label", open ? "Fechar menu" : "Abrir menu");
+      });
+      navLinks.addEventListener("click", function (e) {
+        if (e.target && e.target.closest && e.target.closest("a")) {
+          navLinks.classList.remove("open");
+          menuBtn.setAttribute("aria-expanded", "false");
+        }
       });
     }
-    play();
 
-    // Pausa a animação do radar quando fora de vista
-    const sweep = document.querySelector(".radar .sweep");
-    if (sweep) {
-      new IntersectionObserver(
-        ([e]) => (sweep.style.animationPlayState = e.isIntersecting ? "running" : "paused"),
-        { threshold: 0 }
-      ).observe(sweep);
+    /* ---------- revelador genérico (entradas únicas) ----------
+       Elementos .scrub são controlados pelo próprio CSS quando há
+       suporte nativo e ficam visíveis por padrão nos demais. */
+    var revealEls = [].slice.call(document.querySelectorAll("[data-animate]:not(.scrub)"));
+    if ("IntersectionObserver" in window && !reduceMotion) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (!en.isIntersecting) return;
+          en.target.classList.add("in");
+          io.unobserve(en.target);
+        });
+      }, { threshold: 0.16, rootMargin: "0px 0px -7% 0px" });
+      revealEls.forEach(function (el) { io.observe(el); });
+
+      var arrows = [].slice.call(document.querySelectorAll(".arrow.scrub"));
+      if (arrows.length) {
+        var arrowObs = new IntersectionObserver(function (entries) {
+          entries.forEach(function (en) {
+            if (!en.isIntersecting || root.classList.contains("sda")) return;
+            en.target.classList.add("in");
+            arrowObs.unobserve(en.target);
+          });
+        }, { threshold: 0.9 });
+        arrows.forEach(function (el) { arrowObs.observe(el); });
+      }
+    } else {
+      revealEls.forEach(function (el) { el.classList.add("in"); });
+      [].slice.call(document.querySelectorAll(".arrow.scrub")).forEach(function (el) { el.classList.add("in"); });
     }
+
+    /* ---------- spy de navegação ---------- */
+    var navAnchorList = [].slice.call(document.querySelectorAll("nav.links a"));
+    var sectionList = [].slice.call(document.querySelectorAll("main section[id]"));
+    if ("IntersectionObserver" in window && sectionList.length) {
+      var spyMap = {};
+      navAnchorList.forEach(function (a) {
+        var href = a.getAttribute("href") || "";
+        if (href.charAt(0) === "#") spyMap[href.slice(1)] = a;
+      });
+      var spy = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (!en.isIntersecting) return;
+          var link = spyMap[en.target.id];
+          if (!link) return;
+          navAnchorList.forEach(function (a) { a.classList.remove("active"); });
+          link.classList.add("active");
+        });
+      }, { rootMargin: "-35% 0px -55% 0px", threshold: 0 });
+      sectionList.forEach(function (s) { spy.observe(s); });
+    }
+
+    /* ---------- contadores dos stats ---------- */
+    function animateCount(el) {
+      var target = parseFloat(el.getAttribute("data-count")) || 0;
+      var from = parseFloat(el.getAttribute("data-from")) || 0;
+      var suffix = el.getAttribute("data-suffix") || "";
+      var duration = 1300;
+      var start = null;
+      function step(ts) {
+        if (start === null) start = ts;
+        var p = Math.min((ts - start) / duration, 1);
+        var eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = Math.round(from + (target - from) * eased) + suffix;
+        if (p < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+    var counters = [].slice.call(document.querySelectorAll("[data-count]"));
+    if ("IntersectionObserver" in window && !reduceMotion && counters.length) {
+      var countObs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (!en.isIntersecting) return;
+          animateCount(en.target);
+          countObs.unobserve(en.target);
+        });
+      }, { threshold: 0.6 });
+      counters.forEach(function (el) { countObs.observe(el); });
+    }
+
+    /* ---------- preview do dashboard: camadas ---------- */
+    var shot = document.getElementById("dashShot");
+    if (shot) {
+      if ("IntersectionObserver" in window && !reduceMotion) {
+        var shotObs = new IntersectionObserver(function (entries) {
+          entries.forEach(function (en) {
+            if (!en.isIntersecting) return;
+            shot.classList.add("in");
+            shotObs.unobserve(shot);
+          });
+        }, { threshold: 0.32 });
+        shotObs.observe(shot);
+      } else {
+        shot.classList.add("in");
+      }
+    }
+
+    var reqChips = document.getElementById("reqChips");
+    if (reqChips) {
+      if ("IntersectionObserver" in window && !reduceMotion) {
+        var chipsObs = new IntersectionObserver(function (entries) {
+          entries.forEach(function (en) {
+            if (!en.isIntersecting) return;
+            reqChips.classList.add("in");
+            chipsObs.unobserve(reqChips);
+          });
+        }, { threshold: 0.4 });
+        chipsObs.observe(reqChips);
+      } else {
+        reqChips.classList.add("in");
+      }
+    }
+
+    /* ---------- timeline: itens acendem ---------- */
+    var tlItems = [].slice.call(document.querySelectorAll(".tl-item"));
+    if ("IntersectionObserver" in window && !reduceMotion && tlItems.length) {
+      var tlObs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          en.target.classList.toggle("lit", en.isIntersecting);
+        });
+      }, { threshold: 0.55 });
+      tlItems.forEach(function (el) { tlObs.observe(el); });
+    } else {
+      tlItems.forEach(function (el) { el.classList.add("lit"); });
+    }
+
+    /* ---------- terminais: linhas rápidas em loop ----------
+       Todos os setTimeout ficam rastreados; cada ciclo limpa os
+       anteriores para nunca acumular timers sobrepostos. */
+    function makeTerminal(container, buildLines, opts) {
+      if (!container) return;
+      opts = opts || {};
+      var lineDelay = opts.lineDelay || 130;
+      var holdTime = opts.holdTime || 2800;
+      var timers = [];
+      var playing = false;
+
+      function later(fn, ms) { timers.push(window.setTimeout(fn, ms)); }
+      function clearTimers() {
+        timers.forEach(function (t) { clearTimeout(t); });
+        timers.length = 0;
+      }
+
+      function renderStatic() {
+        container.innerHTML = "";
+        buildLines().forEach(function (ln) {
+          var div = document.createElement("div");
+          div.className = (ln.cls || "") + " show";
+          div.innerHTML = ln.html;
+          container.appendChild(div);
+        });
+      }
+
+      function playCycle() {
+        clearTimers();
+        container.innerHTML = "";
+        var frag = document.createDocumentFragment();
+        var lines = buildLines();
+        lines.forEach(function (ln, i) {
+          var div = document.createElement("div");
+          div.className = ln.cls || "";
+          div.innerHTML = ln.html;
+          frag.appendChild(div);
+          later(function () { div.classList.add("show"); }, i * lineDelay);
+        });
+        container.appendChild(frag);
+        later(playCycle, lines.length * lineDelay + holdTime);
+      }
+
+      if (reduceMotion || !("IntersectionObserver" in window)) {
+        renderStatic();
+        return;
+      }
+      var termObs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (en.isIntersecting && !playing) {
+            playing = true;
+            playCycle();
+          } else if (!en.isIntersecting && playing) {
+            playing = false;
+            clearTimers();
+          }
+        });
+      }, { threshold: 0.25 });
+      termObs.observe(container);
+    }
+
+    var HERO_LINES = [
+      { cls: "t-line t-cmd", html: '<span class="p">➜</span> curl <span class="flag">http://localhost:8000</span>/api/v1/system/summary | jq' },
+      { cls: "t-line", html: '<span class="j-punc">{</span>' },
+      { cls: "t-line", html: '  <span class="j-key">"status"</span><span class="j-punc">:</span> <span class="j-str">"ok"</span><span class="j-punc">,</span>' },
+      { cls: "t-line", html: '  <span class="j-key">"docker_version"</span><span class="j-punc">:</span> <span class="j-str">"28.3.2"</span><span class="j-punc">,</span>' },
+      { cls: "t-line", html: '  <span class="j-key">"containers_running"</span><span class="j-punc">:</span> <span class="j-num">9</span><span class="j-punc">,</span>' },
+      { cls: "t-line", html: '  <span class="j-key">"containers_stopped"</span><span class="j-punc">:</span> <span class="j-num">3</span><span class="j-punc">,</span>' },
+      { cls: "t-line", html: '  <span class="j-key">"networks_total"</span><span class="j-punc">:</span> <span class="j-num">5</span><span class="j-punc">,</span>' },
+      { cls: "t-line", html: '  <span class="j-key">"ports_used_total"</span><span class="j-punc">:</span> <span class="j-num">14</span><span class="j-punc">,</span>' },
+      { cls: "t-line", html: '  <span class="j-key">"mode"</span><span class="j-punc">:</span> <span class="j-str">"somente-observação"</span>' },
+      { cls: "t-line", html: '<span class="j-punc">}</span>' },
+      { cls: "t-line", html: '<span class="cursor"></span>' }
+    ];
+
+    var INSTALL_LINES = [
+      { cls: "tr t-cmd", html: '<span class="t-prompt">➜</span> git clone <span class="t-flag">git@github.com:rique/PortWatch.git</span>' },
+      { cls: "tr", html: '<span class="t-comment"># entrar no projeto</span>' },
+      { cls: "tr t-cmd", html: '<span class="t-prompt">➜</span> cd PortWatch' },
+      { cls: "tr", html: '<span class="t-comment"># ambiente isolado de desenvolvimento (ADR 0005)</span>' },
+      { cls: "tr t-cmd", html: '<span class="t-prompt">➜</span> cp .env.example portwatch.env   <span class="t-comment"># dev-sandbox</span>' },
+      { cls: "tr t-cmd", html: '<span class="t-prompt">➜</span> make dev   <span class="t-comment"># backend + frontend</span>' },
+      { cls: "tr", html: '<span class="t-comment"># primeira leitura do host</span>' },
+      { cls: "tr t-cmd", html: '<span class="t-prompt">➜</span> curl localhost:8000/api/v1/system/summary' },
+      { cls: "tr", html: '{<span class="j-key">"status"</span>: <span class="j-str">"ok"</span>, <span class="j-key">"containers_running"</span>: <span class="j-num">12</span>, …}' },
+      { cls: "tr", html: '<span class="cursor"></span>' }
+    ];
+
+    makeTerminal(document.getElementById("termOut"), function () { return HERO_LINES; }, { lineDelay: 105, holdTime: 3600 });
+    makeTerminal(document.getElementById("installTerm"), function () { return INSTALL_LINES; }, { lineDelay: 140, holdTime: 2400 });
+
+    /* ---------- radar: pausa fora da tela ---------- */
+    var radar = document.querySelector(".radar");
+    var sweepEl = radar ? radar.querySelector(".sweep") : null;
+    if (radar && sweepEl && "IntersectionObserver" in window) {
+      var radarObs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          sweepEl.style.animationPlayState = en.isIntersecting ? "running" : "paused";
+        });
+      }, { threshold: 0 });
+      radarObs.observe(radar);
+    }
+  })();
   </script>
 </body>
 </html>

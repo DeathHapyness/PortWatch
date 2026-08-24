@@ -38,7 +38,8 @@ Principais (ativos ao longo do projeto): **Lead**, **Backend**, **Frontend**, **
 Especializados, sob demanda (não permanentes): **Architect**, **Security**.
 
 - Cada agente trabalha em worktree/branch próprio (`agent/<área>/<tarefa>`).
-- Fronteiras por diretório: Backend → `apps/api`, `apps/collector`;
+- Fronteiras por diretório: Backend → `apps/backend` (API e Collector no
+  mesmo processo, ver `docs/adr/0001-backend-single-process.md`);
   Frontend → `apps/web`; DevOps → `infra/`, `.github/`.
 - Arquivos de contrato compartilhado (spec OpenAPI, tipos gerados) só são
   editados por Architect/Lead.

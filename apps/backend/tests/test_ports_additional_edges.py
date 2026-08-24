@@ -104,3 +104,44 @@ async def test_available_ports_returns_no_entries_when_every_port_is_occupied(
 
     assert response.status_code == 200
     assert response.json()["entries"] == []
+
+
+async def test_list_ports_uses_configured_range_for_empty_snapshot(
+    client: httpx.AsyncClient, snapshot_store: SnapshotStore
+) -> None:
+    response = await client.get("/api/v1/ports")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["range_start"] < body["range_end"]
+    assert body["entries"] == []
+
+
+async def test_available_ports_limit_one_returns_first_free_port(
+    client: httpx.AsyncClient, snapshot_store: SnapshotStore
+) -> None:
+    _seed_edges(snapshot_store)
+
+    response = await client.get(
+        "/api/v1/ports/available",
+        params={"range_start": 52, "range_end": 54, "limit": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["entries"] == [
+        {"port": 52, "protocol": "tcp", "state": "free", "owner": None}
+    ]
+
+
+async def test_available_ports_includes_maximum_port_boundary(
+    client: httpx.AsyncClient, snapshot_store: SnapshotStore
+) -> None:
+    response = await client.get(
+        "/api/v1/ports/available",
+        params={"range_start": 65535, "range_end": 65535, "limit": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["entries"] == [
+        {"port": 65535, "protocol": "tcp", "state": "free", "owner": None}
+    ]

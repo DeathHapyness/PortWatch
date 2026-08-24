@@ -41,3 +41,10 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# e2e tests start real Docker containers (infra/dev/docker-compose.dev.yml)
+# and are opt-in — excluded here so a plain `uv run pytest` never touches
+# Docker; run them explicitly with `make test-e2e` or `uv run pytest -m e2e`.
+addopts = "-m 'not e2e'"
+markers = [
+    "e2e: exercises the real dev sandbox (Docker required) — see tests/e2e/conftest.py",
+]

@@ -2,10 +2,13 @@
 
 Plataforma de monitoramento de homelab — Docker, containers e portas de rede.
 
-Status atual: **Fase 2 — Project Foundation**. Existe um esqueleto de backend
-(FastAPI, contrato OpenAPI inicial, sem lógica real ainda) e de frontend
-(React + Vite), mas nenhuma funcionalidade de monitoramento real — isso é a
-Fase 3 em diante. Arquitetura completa e roadmap:
+Status atual: **Fase 4 — API real (em andamento)**. A fundação do projeto e o
+Collector já estão implementados: o backend coleta containers, redes e portas
+do sandbox via `docker-socket-proxy`/`netprobe`, publica snapshots atômicos em
+memória e expõe readiness real. As rotas de containers, redes e resumo do
+sistema já leem esses snapshots; a integração completa das rotas de portas é o
+item restante desta fase. O frontend ainda é a tela de fundação e será ligado a
+essas APIs nos próximos incrementos. Arquitetura completa e roadmap:
 https://claude.ai/code/artifact/b41be8c8-2963-4ef8-a4f7-b984b68407a8
 
 Decisões arquiteturais registradas em `docs/adr/`.
@@ -40,9 +43,9 @@ make dev-down    # derruba e limpa o sandbox
 `infra/dev/guard.sh` recusa subir a stack se o Docker "de destino" não parecer
 ser um Docker de desenvolvimento local vazio — ver comentários no script.
 
-Além do fixture inerte (`fixture-web`), o sandbox inclui dois serviços de
-preparação para a Fase 3 (Docker Collector), ambos publicados só em
-`127.0.0.1` para o backend nativo (rodando fora do Docker) alcançar:
+Além do fixture inerte (`fixture-web`), o sandbox inclui os dois serviços usados
+pelo Collector, ambos publicados só em `127.0.0.1` para o backend nativo
+(rodando fora do Docker) alcançar:
 
 - `docker-socket-proxy` (`127.0.0.1:2375`) — único container com o socket
   Docker real montado, restrito a GET (ver

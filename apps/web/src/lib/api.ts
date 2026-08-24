@@ -110,7 +110,8 @@ function queryString(values: Record<string, string | number | undefined>): strin
 }
 
 async function readProblem(response: Response): Promise<ProblemDetail | null> {
-  if (!response.headers.get('content-type')?.includes('application/json')) return null
+  const mediaType = response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase()
+  if (mediaType !== 'application/json' && !mediaType?.endsWith('+json')) return null
 
   try {
     return (await response.json()) as ProblemDetail
@@ -121,7 +122,7 @@ async function readProblem(response: Response): Promise<ProblemDetail | null> {
 
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, {
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json, application/problem+json' },
     signal,
   })
 

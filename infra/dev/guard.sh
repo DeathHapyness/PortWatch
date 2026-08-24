@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Guarda de segurança: recusa operar o sandbox de dev se o Docker "de destino"
-# não for, comprovadamente, o Docker local de desenvolvimento (contexto
-# `default`, socket unix local, sem sinais de conter serviços reais). Não é
-# prova criptográfica de nada — é um freio simples e barato contra apontar o
-# sandbox, por engano, para o Docker do homelab de produção.
+# não parecer, com boa confiança, ser o Docker local de desenvolvimento desta
+# máquina (contexto `default`, socket unix canônico `/var/run/docker.sock`,
+# sem sinais de conter serviços reais). Isto é uma heurística barata contra
+# erro operacional — não é prova criptográfica nem isolamento de segurança
+# forte, e falha fechado (rejeita) sempre que um valor não puder ser
+# interpretado com confiança.
 #
 # Uso: infra/dev/guard.sh
 #   Mensagens de diagnóstico vão para stderr. Em caso de sucesso, a ÚNICA
@@ -13,52 +15,74 @@
 
 set -euo pipefail
 
-HARD_MAX_UNLABELED=10
-requested_max_unlabeled="${PORTWATCH_DEV_MAX_UNLABELED:-5}"
-if [ "$requested_max_unlabeled" -gt "$HARD_MAX_UNLABELED" ]; then
-  # Teto absoluto: PORTWATCH_DEV_MAX_UNLABELED não pode virar bypass do guard.
-  max_unlabeled_containers="$HARD_MAX_UNLABELED"
-else
-  max_unlabeled_containers="$requested_max_unlabeled"
-fi
+CANONICAL_ENDPOINT="unix:///var/run/docker.sock"
+DEFAULT_MAX_UNLABELED=5
+
+ps_tmp="$(mktemp)"
+trap 'rm -f "$ps_tmp"' EXIT
 
 fail() {
   echo "✗ guard: $1" >&2
-  echo "  Esta stack de dev só deve rodar contra o Docker local desta máquina (contexto 'default')." >&2
+  echo "  Esta stack de dev só deve rodar contra o Docker local desta máquina (contexto 'default', socket $CANONICAL_ENDPOINT)." >&2
   echo "  Nenhum agente tem autorização para tocar o Docker de produção do homelab." >&2
   exit 1
 }
 
+# 0. PORTWATCH_DEV_MAX_UNLABELED, se definido, precisa ser um inteiro decimal
+#    não negativo — um valor inválido é rejeitado (falha fechada) em vez de
+#    silenciosamente desativar a heurística do passo 3 (era o bypass INC-01).
+#    O override só pode tornar o guard mais estrito (menor que o padrão),
+#    nunca mais permissivo — não existe forma de "aumentar" o limite (INC-03).
+requested_max_unlabeled="${PORTWATCH_DEV_MAX_UNLABELED:-$DEFAULT_MAX_UNLABELED}"
+case "$requested_max_unlabeled" in
+  ''|*[!0-9]*) fail "PORTWATCH_DEV_MAX_UNLABELED='$requested_max_unlabeled' não é um inteiro decimal não negativo." ;;
+esac
+if [ "$requested_max_unlabeled" -lt "$DEFAULT_MAX_UNLABELED" ]; then
+  max_unlabeled_containers="$requested_max_unlabeled"
+else
+  max_unlabeled_containers="$DEFAULT_MAX_UNLABELED"
+fi
+
 # 1. O contexto Docker ativo precisa ser exatamente 'default'. Isso cobre tanto
 #    um `docker context use` para outro contexto quanto um override via
 #    DOCKER_CONTEXT — nenhum dos dois é aceito, mesmo que aponte, por acaso,
-#    para um socket unix local.
+#    para o socket canônico.
 context_name="$(docker context show 2>/dev/null || echo "")"
 if [ "$context_name" != "default" ]; then
   fail "contexto Docker ativo é '${context_name:-<indisponível>}', não 'default'."
 fi
 
-# 2. O endpoint efetivamente usado pelo CLI Docker precisa ser um socket unix
-#    local. DOCKER_HOST, quando definido, tem prioridade sobre o endpoint do
-#    contexto — então validamos o valor que de fato será usado, não só um dos
-#    dois.
+# 2. O endpoint efetivamente usado pelo CLI Docker precisa ser exatamente o
+#    socket canônico deste host (CLAUDE.md: "unix:///var/run/docker.sock
+#    local"). DOCKER_HOST, quando definido, tem prioridade sobre o endpoint do
+#    contexto — validamos o valor que de fato será usado, não só um dos dois.
+#    Diferente da versão anterior, não aceitamos "qualquer" socket unix (era
+#    o bypass INC-02): só o socket canônico exato é permitido.
 effective_endpoint="${DOCKER_HOST:-}"
 if [ -z "$effective_endpoint" ]; then
   effective_endpoint="$(docker context inspect --format '{{ (index .Endpoints "docker").Host }}' default 2>/dev/null || echo "")"
 fi
-case "$effective_endpoint" in
-  unix:///*) ;; # ok — socket local
-  *) fail "endpoint Docker efetivo não é um socket unix local: '${effective_endpoint:-<vazio>}'." ;;
-esac
+if [ "$effective_endpoint" != "$CANONICAL_ENDPOINT" ]; then
+  fail "endpoint Docker efetivo é '${effective_endpoint:-<vazio>}', esperado exatamente '$CANONICAL_ENDPOINT'."
+fi
 
 # 3. Heurística: se já existem muitos containers (rodando OU parados) sem o
 #    label do sandbox, é mais provável que isto seja um Docker "de verdade"
 #    com serviços reais do que o sandbox de dev vazio. Container parado ainda
 #    pode ser produção — por isso `-a`, não só os em execução.
-unlabeled="$(docker ps -a --format '{{.Label "portwatch.env"}}' | grep -vc '^dev-sandbox$' || true)"
+#    Falha de "docker ps" (daemon indisponível, permissão negada, etc.) tem
+#    que travar o guard, não ser tratada como "0 containers não rotulados" —
+#    por isso a checagem de erro fica separada da contagem via grep, e usamos
+#    um arquivo temporário (não uma variável) para preservar corretamente o
+#    caso de zero containers (uma variável vazia + printf criaria uma linha
+#    em branco fantasma e contaria 1 não rotulado onde na verdade há 0).
+if ! docker ps -a --format '{{.Label "portwatch.env"}}' >"$ps_tmp" 2>&1; then
+  fail "'docker ps -a' falhou ao consultar o Docker: $(cat "$ps_tmp")"
+fi
+unlabeled="$(grep -vc '^dev-sandbox$' "$ps_tmp" || true)"
 if [ "$unlabeled" -gt "$max_unlabeled_containers" ]; then
-  fail "$unlabeled container(s) (incluindo parados) sem o label portwatch.env=dev-sandbox (limite: $max_unlabeled_containers, teto absoluto: $HARD_MAX_UNLABELED). Isso não parece um Docker de dev vazio — abortando por segurança."
+  fail "$unlabeled container(s) (incluindo parados) sem o label portwatch.env=dev-sandbox (limite: $max_unlabeled_containers). Isso não parece um Docker de dev vazio — abortando por segurança."
 fi
 
-echo "✓ guard: Docker local de desenvolvimento confirmado (contexto 'default', $unlabeled container(s) não rotulado(s), limite $max_unlabeled_containers)." >&2
+echo "✓ guard: Docker local de desenvolvimento confirmado (contexto 'default', socket $CANONICAL_ENDPOINT, $unlabeled container(s) não rotulado(s), limite $max_unlabeled_containers)." >&2
 printf '%s\n' "$effective_endpoint"

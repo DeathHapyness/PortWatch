@@ -1,24 +1,24 @@
-"""The app's lifespan must start/stop the Collector's background thread
-cleanly — including when docker-socket-proxy is completely unreachable
-(e.g. this test's own default settings, run outside any Docker network).
-A failed poll cycle is caught and logged inside the Collector itself (see
-collector/service.py), so app startup/shutdown must never hang or raise
-just because Docker isn't reachable.
-"""
+"""The app lifespan starts/stops the Collector even without Docker."""
 
-from fastapi.testclient import TestClient
+import httpx
 
 from portwatch_backend.app import app
 
 
-def test_lifespan_starts_and_stops_the_collector_thread_cleanly() -> None:
+async def test_lifespan_starts_and_stops_the_collector_thread_cleanly() -> None:
     assert app.state.collector._thread is None  # not started outside a lifespan
 
-    with TestClient(app) as client:
+    # Drive the ASGI lifespan directly. Starlette's synchronous TestClient
+    # portal can deadlock on __enter__ with the current AnyIO/pytest-asyncio
+    # combination, before the app's lifespan is even invoked. ASGITransport
+    # deliberately leaves lifespan management to this explicit context.
+    transport = httpx.ASGITransport(app=app)
+    async with app.router.lifespan_context(app):
         assert app.state.collector._thread is not None
         assert app.state.collector._thread.is_alive()
-        response = client.get("/health")
-        assert response.status_code == 200
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/health")
+            assert response.status_code == 200
 
-    # TestClient's context manager drives the real startup/shutdown events.
+    # Exiting the lifespan context drives the real shutdown path.
     assert app.state.collector._thread is None

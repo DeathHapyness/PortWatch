@@ -177,10 +177,23 @@ def _parse_published_ports(raw_ports: JSONDict) -> list[PublishedPort]:
             continue
         for binding in bindings:
             host_port_text = binding.get("HostPort")
+            try:
+                host_port = int(host_port_text) if host_port_text else None
+            except (TypeError, ValueError):
+                # A malformed/unexpected-shaped HostPort from the Docker API
+                # must not surface as host_port=None — that already means
+                # "container port exposed but not published to the host"
+                # (see this function's docstring), a different, legitimate
+                # state. Drop just this one binding instead, so one bad
+                # value doesn't cost the container its other, valid
+                # bindings (contrast with the container_port/protocol
+                # `continue` above, which drops the whole port entry
+                # because there's nothing salvageable there).
+                continue
             published.append(
                 PublishedPort(
                     container_port=container_port,
-                    host_port=int(host_port_text) if host_port_text else None,
+                    host_port=host_port,
                     host_ip=binding.get("HostIp") or None,
                     protocol=protocol,
                 )

@@ -162,6 +162,28 @@ def test_parse_container_detail_handles_multiple_host_bindings_per_port() -> Non
     assert {p.host_ip for p in detail.ports} == {"127.0.0.1", "::1"}
 
 
+def test_parse_container_detail_drops_bindings_with_malformed_host_port() -> None:
+    # An unexpected-shaped HostPort from the Docker API (non-numeric string,
+    # or a type int() can't coerce at all) must not blow up the whole
+    # container — only that one binding is dropped, siblings are kept.
+    attrs = {
+        **FIXTURE_WEB_ATTRS,
+        "NetworkSettings": {
+            "Networks": {"portwatch-dev-net": {}},
+            "Ports": {
+                "80/tcp": [
+                    {"HostIp": "127.0.0.1", "HostPort": "8081"},
+                    {"HostIp": "127.0.0.1", "HostPort": "not-a-port"},  # ValueError
+                    {"HostIp": "127.0.0.1", "HostPort": ["8081"]},  # TypeError
+                ]
+            },
+        },
+    }
+    detail = parse_container_detail(attrs)
+    assert len(detail.ports) == 1
+    assert detail.ports[0].host_port == 8081
+
+
 def test_parse_container_detail_rejects_unknown_status() -> None:
     attrs = {**FIXTURE_WEB_ATTRS, "State": {"Status": "some-future-docker-status"}}
     with pytest.raises(ValueError):

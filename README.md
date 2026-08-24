@@ -40,11 +40,28 @@ make dev-down    # derruba e limpa o sandbox
 `infra/dev/guard.sh` recusa subir a stack se o Docker "de destino" não parecer
 ser um Docker de desenvolvimento local vazio — ver comentários no script.
 
+Além do fixture inerte (`fixture-web`), o sandbox inclui dois serviços de
+preparação para a Fase 3 (Docker Collector), ambos publicados só em
+`127.0.0.1` para o backend nativo (rodando fora do Docker) alcançar:
+
+- `docker-socket-proxy` (`127.0.0.1:2375`) — único container com o socket
+  Docker real montado, restrito a GET (ver
+  `docs/adr/0003-docker-access-isolation.md`).
+- `netprobe` (`127.0.0.1:8088`) — utilitário mínimo que lê `/proc/net/*` do
+  host para reportar portas ocupadas; único componente com
+  `network_mode: host`, sem nenhum acesso ao socket Docker. Contrato HTTP em
+  `infra/netprobe/README.md`.
+
 ## Rodando localmente
 
 ```sh
 # Backend — http://127.0.0.1:8000, docs em /docs, contrato em /openapi.json
 cd apps/backend
+# Se o sandbox de dev estiver de pé (make dev-up), aponte para os serviços
+# de infra via loopback (fora disso, os defaults deixam os recursos
+# desabilitados — ver core/config.py):
+export PORTWATCH_DOCKER_PROXY_URL=http://127.0.0.1:2375
+export PORTWATCH_NETPROBE_URL=http://127.0.0.1:8088
 uv run uvicorn portwatch_backend.app:app --reload --port 8000
 
 # Frontend — http://127.0.0.1:5173, proxy /api/* -> backend acima

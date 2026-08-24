@@ -56,6 +56,7 @@ class Collector:
         self._store = store
         self._client_factory = client_factory or (lambda: make_docker_client(settings))
         self._stop_event = threading.Event()
+        self._lifecycle_lock = threading.Lock()
         self._thread: threading.Thread | None = None
 
     @property
@@ -65,18 +66,34 @@ class Collector:
     def start(self) -> None:
         """Start the background poll loop. Idempotent."""
 
-        if self._thread is not None:
-            return
-        self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run, name="portwatch-collector", daemon=True)
-        self._thread.start()
+        with self._lifecycle_lock:
+            if self._thread is not None and self._thread.is_alive():
+                return
+            self._stop_event.clear()
+            self._thread = threading.Thread(
+                target=self._run, name="portwatch-collector", daemon=True
+            )
+            self._thread.start()
 
     def stop(self, *, timeout: float = 5.0) -> None:
         """Signal the loop to stop and wait for the current cycle to finish."""
 
-        self._stop_event.set()
-        if self._thread is not None:
-            self._thread.join(timeout=timeout)
+        with self._lifecycle_lock:
+            thread = self._thread
+            if thread is None:
+                return
+
+            self._stop_event.set()
+            thread.join(timeout=timeout)
+            if thread.is_alive():
+                # Keep the live thread reference. A subsequent start() must
+                # not create a second Collector while this cycle is still
+                # blocked in Docker/netprobe I/O.
+                logger.warning(
+                    "collector: background thread did not stop within %.1fs",
+                    timeout,
+                )
+                return
             self._thread = None
 
     def _run(self) -> None:

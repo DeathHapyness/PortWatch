@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
-.PHONY: dev-up dev-down dev-status dev-guard
+.PHONY: dev-up dev-down dev-status dev-guard test-e2e
 
 DEV_COMPOSE := infra/dev/docker-compose.dev.yml
 
@@ -26,3 +26,9 @@ dev-down:
 dev-status:
 	@endpoint="$$(bash infra/dev/guard.sh)"; \
 	DOCKER_HOST="$$endpoint" docker compose -f $(DEV_COMPOSE) ps
+
+# apps/backend/tests/e2e/ manages its own guard->up->test->down lifecycle
+# (see conftest.py) — this target is just a memorable entry point, same
+# guard as everything else above.
+test-e2e:
+	cd apps/backend && uv run pytest -m e2e

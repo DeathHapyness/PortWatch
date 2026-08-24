@@ -9,11 +9,18 @@ expõe readiness real; todas as rotas (`containers`, `networks`, `system`,
 `ports`) leem esses snapshots — nenhuma retorna mais dados de exemplo.
 Autenticação por token estático (ADR-0004), erros no contrato RFC 7807
 completo (incluindo validação 422 e `request_id` por requisição), e labels/env
-de containers redigidos por padrão (PW-03). Frontend: dashboard funcional
-(Overview/Containers/Networks/Ports) já consumindo essas APIs reais via
-TanStack Query. Falta: WebSocket `/api/v1/events` para atualização em tempo
-real (hoje é poll), testes E2E contra o sandbox real, e observabilidade
-(Fase 9 — métricas Prometheus). Arquitetura completa e roadmap:
+de containers redigidos por padrão (PW-03). WebSocket `/api/v1/events`
+transmite invalidações de snapshot em tempo real (token via header
+`Authorization`, mesmo esquema do REST — não usável a partir de um browser
+puro sem um mecanismo adicional, já que a WebSocket API nativa não permite
+headers customizados; pendente de decisão antes da integração no frontend).
+Frontend: dashboard funcional (Overview/Containers/Networks/Ports) já
+consumindo as APIs REST via TanStack Query, ainda por poll (não consome o
+WebSocket ainda). Testes E2E (`apps/backend/tests/e2e/`, `make test-e2e`)
+sobem o sandbox real e validam o Collector fim a fim através do
+`docker-socket-proxy`/`netprobe` de verdade. Falta: o frontend consumir o
+WebSocket, e observabilidade (Fase 9 — métricas Prometheus). Arquitetura
+completa e roadmap:
 https://claude.ai/code/artifact/b41be8c8-2963-4ef8-a4f7-b984b68407a8
 
 Decisões arquiteturais registradas em `docs/adr/`.
@@ -83,4 +90,12 @@ Checagens de qualidade:
 ```sh
 cd apps/backend && uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest
 cd apps/web     && pnpm run lint && pnpm run format:check && pnpm run build
+```
+
+`uv run pytest` acima nunca toca Docker (exclui o marker `e2e` por padrão —
+ver `pyproject.toml`). Para rodar a suíte E2E de verdade contra o sandbox
+real (sobe/derruba a stack sozinha, mesmo guard do `make dev-up`):
+
+```sh
+make test-e2e
 ```

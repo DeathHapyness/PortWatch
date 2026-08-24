@@ -46,6 +46,29 @@ DEV_SANDBOX_NETWORK = "portwatch-dev-net"
 
 _READY_TIMEOUT_SECONDS = 30.0
 _READY_POLL_INTERVAL_SECONDS = 0.5
+_SERVICE_WAIT_TIMEOUT_SECONDS = 20.0
+_SERVICE_WAIT_POLL_INTERVAL_SECONDS = 0.25
+
+
+def _wait_for_http_ok(url: str) -> None:
+    """Block (plain sync httpx — no event loop exists yet at this point in
+    the sandbox fixture) until `url` answers with any HTTP response at all;
+    a real reply, even a 4xx, proves the service is actually accepting
+    connections, which is what the caller needs."""
+
+    deadline = time.monotonic() + _SERVICE_WAIT_TIMEOUT_SECONDS
+    last_error: Exception | None = None
+    with httpx.Client(timeout=2.0) as client:
+        while time.monotonic() < deadline:
+            try:
+                client.get(url)
+                return
+            except httpx.HTTPError as exc:
+                last_error = exc
+                time.sleep(_SERVICE_WAIT_POLL_INTERVAL_SECONDS)
+    raise AssertionError(
+        f"{url} never answered within {_SERVICE_WAIT_TIMEOUT_SECONDS:.0f}s: {last_error}"
+    )
 
 
 def _resolve_guarded_docker_host() -> str:
@@ -97,6 +120,18 @@ def dev_sandbox_docker_host() -> Iterator[str]:
         check=True,
     )
     try:
+        # `--wait` above only waits for container state == running — neither
+        # service has a compose healthcheck, so this doesn't mean either has
+        # actually bound its port yet. The Collector's first cycle runs
+        # immediately once the app starts (see collector/service.py's
+        # Collector._run), so without this a real, observed flake happens:
+        # netprobe (or docker-socket-proxy) not answering yet on that very
+        # first cycle silently produces host_ports_enabled=False for the
+        # snapshot every test in this module reads — /health/ready still
+        # says "ready" (it only checks generation >= 1), so nothing here
+        # would have failed loudly without this wait.
+        _wait_for_http_ok(f"{DOCKER_PROXY_URL}/version")
+        _wait_for_http_ok(f"{NETPROBE_URL}/health")
         yield endpoint
     finally:
         subprocess.run(  # noqa: S603
@@ -144,10 +179,12 @@ async def sandbox_client(sandbox_env: None) -> AsyncIterator[httpx.AsyncClient]:
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with app.router.lifespan_context(app):
-        async with httpx.AsyncClient(transport=transport, base_url="http://e2e-test") as client:
-            await _wait_until_ready(client)
-            yield client
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://e2e-test") as client,
+    ):
+        await _wait_until_ready(client)
+        yield client
 
 
 async def _wait_until_ready(client: httpx.AsyncClient) -> None:

@@ -85,6 +85,26 @@ jobs:
           kill "$(cat /tmp/portwatch-backend.pid)" 2>/dev/null || true
           make dev-down
 
+  e2e:
+    name: Backend E2E (real sandbox, apps/backend/tests/e2e)
+    runs-on: ubuntu-latest
+    # Complements `smoke` above: same real docker-socket-proxy/netprobe
+    # stack, but exercised through the pytest suite (auth, containers,
+    # networks, ports, host-only listeners via netprobe — see
+    # apps/backend/tests/e2e/) instead of curl one-liners. The suite (via
+    # its own conftest.py) manages guard -> compose up -> app lifespan ->
+    # compose down itself — `make test-e2e` is the single entry point,
+    # nothing else to orchestrate here.
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
+        with:
+          version: "0.12.5"
+      - name: Install backend dependencies
+        working-directory: apps/backend
+        run: uv sync --all-groups
+      - run: make test-e2e
+
   backend:
     name: Backend (lint, type-check, test)
     runs-on: ubuntu-latest

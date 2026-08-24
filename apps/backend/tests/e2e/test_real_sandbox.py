@@ -21,6 +21,7 @@ import pytest
 DEV_SANDBOX_NETWORK = "portwatch-dev-net"
 FIXTURE_CONTAINER_NAME = "portwatch-dev-fixture-web"
 FIXTURE_HOST_PORT = 8081
+NETPROBE_HOST_PORT = 8088
 
 pytestmark = pytest.mark.e2e
 
@@ -126,19 +127,26 @@ async def test_ports_endpoint_reflects_the_real_published_fixture_port(
 async def test_ports_endpoint_sees_a_real_host_listener_via_netprobe(
     sandbox_client: httpx.AsyncClient, auth_headers: dict[str, str]
 ) -> None:
-    # docker-socket-proxy itself listens on 127.0.0.1:2375 on the *host* —
-    # netprobe (network_mode: host, no Docker socket access) should observe
-    # this real listener independently of the Collector's own knowledge
-    # that docker-socket-proxy exists. This is the one assertion that
-    # genuinely can't be made against mocks.
+    # netprobe itself (network_mode: host, port 8088, no `ports:` mapping —
+    # network_mode: host bypasses Docker's own port-publishing entirely) is
+    # the one port in this sandbox the Collector can *only* know about
+    # through netprobe's host-namespace view, never through the Docker API.
+    # (docker-socket-proxy's 2375 doesn't work for this: it's a normal
+    # Docker-published port too, so the Collector already knows it as
+    # state=published from the container inspect alone — confirmed by hand
+    # against a real cycle before picking 8088 instead.)
     response = await sandbox_client.get(
         "/api/v1/ports",
-        params={"range_start": 2375, "range_end": 2375, "state": "host"},
+        params={
+            "range_start": NETPROBE_HOST_PORT,
+            "range_end": NETPROBE_HOST_PORT,
+            "state": "host",
+        },
         headers=auth_headers,
     )
 
     assert response.status_code == 200
-    assert [e["port"] for e in response.json()["entries"]] == [2375]
+    assert [e["port"] for e in response.json()["entries"]] == [NETPROBE_HOST_PORT]
 
 
 async def test_available_ports_excludes_the_real_occupied_fixture_port(

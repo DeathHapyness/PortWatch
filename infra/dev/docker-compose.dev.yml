@@ -6,12 +6,12 @@
 # Serviços:
 #   - fixture-web: alvo inerte para validar o ciclo de vida do sandbox
 #     (up/down limpo) desde a Fase 1. Não é parte do PortWatch.
-#   - docker-socket-proxy: preparação de infra da Fase 3 (ver
+#   - docker-socket-proxy: isolamento usado pelo Collector (ver
 #     docs/adr/0003-docker-access-isolation.md). ÚNICO container com o
 #     socket Docker real montado, e só em modo leitura (GET-only via
 #     allowlist HAProxy da própria imagem — POST=0 é o interruptor mestre).
 #     Nenhum outro serviço deste compose monta o socket.
-#   - netprobe: preparação de infra da Fase 3. ÚNICO serviço com
+#   - netprobe: descoberta de portas usada pelo Collector. ÚNICO serviço com
 #     `network_mode: host` (necessário para enxergar as portas ocupadas na
 #     netns do host via /proc/net/*) e, em contrapartida, SEM nenhum acesso
 #     ao socket Docker. Ver infra/netprobe/README.md para o contrato HTTP.
@@ -36,8 +36,8 @@ services:
   # docker-socket-proxy: proxy HAProxy (Tecnativa) na frente do socket Docker
   # real deste host de dev. Pinado por tag+digest (não ":latest" — ver
   # docs/audits/2026-08-23-auditoria-tecnica.md, achado PW-12, sobre imagens
-  # mutáveis no sandbox). Allowlist é GET-only: CONTAINERS/NETWORKS/INFO/
-  # EVENTS/VERSION/PING habilitados, POST=0 desabilita qualquer escrita em
+  # mutáveis no sandbox). Allowlist é GET-only: somente CONTAINERS/NETWORKS/
+  # VERSION habilitados; POST=0 desabilita qualquer escrita em
   # qualquer seção (mesmo que uma delas seja habilitada por engano no
   # futuro). As demais seções (AUTH, SECRETS, EXEC, IMAGES, ...) já vêm
   # revogadas por padrão na imagem, mas são listadas abaixo explicitamente
@@ -49,14 +49,11 @@ services:
       - "portwatch.env=dev-sandbox"
     environment:
       # Habilitado — o mínimo que o backend precisa para containers, redes,
-      # info do daemon, stream de eventos e version (ver
+      # inspect/list de containers e redes, e version (ver
       # apps/backend/src/portwatch_backend/core/config.py).
       CONTAINERS: "1"
       NETWORKS: "1"
-      INFO: "1"
-      EVENTS: "1"
       VERSION: "1"
-      PING: "1"
       # Interruptor mestre: com POST=0, a imagem só permite GET/HEAD em
       # QUALQUER seção, independente do que estiver habilitado acima.
       POST: "0"
@@ -66,6 +63,9 @@ services:
       SECRETS: "0"
       EXEC: "0"
       IMAGES: "0"
+      INFO: "0"
+      EVENTS: "0"
+      PING: "0"
       BUILD: "0"
       COMMIT: "0"
       VOLUMES: "0"

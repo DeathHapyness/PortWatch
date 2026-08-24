@@ -7,6 +7,7 @@ build against it with a mock server. See docs/adr/0001.
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -107,5 +108,5 @@ class ProblemDetail(BaseModel):
     type: str = "about:blank"
     title: str
     status: int
-    detail: str | None = None
+    detail: Any | None = None
     request_id: str | None = None

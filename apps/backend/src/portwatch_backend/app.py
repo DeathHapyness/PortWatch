@@ -10,6 +10,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -18,6 +20,7 @@ from portwatch_backend.collector.service import Collector
 from portwatch_backend.collector.state import SnapshotStore
 from portwatch_backend.core.auth import require_api_token
 from portwatch_backend.core.config import get_settings
+from portwatch_backend.core.middleware import request_id_middleware
 from portwatch_backend.core.schemas import ProblemDetail
 
 
@@ -55,15 +58,40 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_allow_origins,
         allow_credentials=False,
         allow_methods=["GET"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-Id"],
+        expose_headers=["X-Request-Id"],
     )
+    app.middleware("http")(request_id_middleware)
 
     @app.exception_handler(HTTPException)
     async def problem_detail_handler(request: Request, exc: HTTPException) -> JSONResponse:
-        problem = ProblemDetail(title=exc.detail, status=exc.status_code, detail=exc.detail)
+        title = exc.detail if isinstance(exc.detail, str) else "HTTP error"
+        problem = ProblemDetail(
+            title=title,
+            status=exc.status_code,
+            detail=exc.detail,
+            request_id=request.state.request_id,
+        )
         return JSONResponse(
             status_code=exc.status_code,
-            content=problem.model_dump(),
+            content=jsonable_encoder(problem),
+            media_type="application/problem+json",
+            headers=exc.headers,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_problem_detail_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        problem = ProblemDetail(
+            title="Request validation error",
+            status=422,
+            detail=exc.errors(),
+            request_id=request.state.request_id,
+        )
+        return JSONResponse(
+            status_code=422,
+            content=jsonable_encoder(problem),
             media_type="application/problem+json",
         )
 

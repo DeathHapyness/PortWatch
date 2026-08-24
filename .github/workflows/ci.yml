@@ -26,6 +26,65 @@ jobs:
           python-version: "3.12"
       - run: python -m unittest discover -s infra/netprobe/tests -v
 
+  smoke:
+    name: Dev sandbox smoke test (compose + real backend + /health)
+    runs-on: ubuntu-latest
+    # Runs the real infra/dev/docker-compose.dev.yml stack (docker-socket-proxy
+    # + netprobe + a throwaway fixture container) against the runner's own
+    # Docker daemon — never the user's homelab (see CLAUDE.md: this IS "the
+    # one dev sandbox", just executed on GitHub's ephemeral runner instead of
+    # a laptop). The backend runs natively (uv run uvicorn), same as
+    # README.md's local dev instructions, so this exercises the exact same
+    # topology a contributor runs by hand: guard.sh -> compose up -> backend
+    # -> real /health/ready against real docker-socket-proxy/netprobe.
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
+        with:
+          version: "0.12.5"
+      - name: Install backend dependencies
+        working-directory: apps/backend
+        run: uv sync --all-groups
+      - name: Validate compose config
+        run: docker compose -f infra/dev/docker-compose.dev.yml config >/dev/null
+      - name: Bring up dev sandbox (through guard.sh, via make dev-up)
+        run: make dev-up
+      - name: Start backend natively against the sandbox
+        working-directory: apps/backend
+        env:
+          PORTWATCH_DOCKER_PROXY_URL: http://127.0.0.1:2375
+          PORTWATCH_NETPROBE_URL: http://127.0.0.1:8088
+        run: |
+          nohup uv run uvicorn portwatch_backend.app:app --host 127.0.0.1 --port 8000 \
+            > /tmp/portwatch-backend.log 2>&1 &
+          echo $! > /tmp/portwatch-backend.pid
+      - name: Wait for /health/ready (real Collector cycle against the sandbox)
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health/ready >/tmp/ready.json 2>/dev/null; then
+              cat /tmp/ready.json
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "backend never became ready within 30s" >&2
+          cat /tmp/portwatch-backend.log >&2
+          exit 1
+      - name: Smoke test real endpoints
+        run: |
+          set -e
+          curl -fsS http://127.0.0.1:8000/health
+          echo
+          curl -fsS http://127.0.0.1:8000/api/v1/system/summary
+          echo
+          curl -fsS http://127.0.0.1:8000/api/v1/containers | grep -q portwatch-dev-fixture-web
+          curl -fsS http://127.0.0.1:8000/api/v1/ports
+      - name: Teardown
+        if: always()
+        run: |
+          kill "$(cat /tmp/portwatch-backend.pid)" 2>/dev/null || true
+          make dev-down
+
   backend:
     name: Backend (lint, type-check, test)
     runs-on: ubuntu-latest

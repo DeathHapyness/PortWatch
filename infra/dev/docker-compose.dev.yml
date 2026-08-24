@@ -1,0 +1,25 @@
+# Sandbox de desenvolvimento do PortWatch.
+#
+# Isolado do Docker de produção do homelab por construção: usa sempre o
+# contexto Docker "default" desta máquina de desenvolvimento (ver guard.sh).
+# Nesta fase (Fase 1 — Development Environment) contém apenas um fixture
+# mínimo para validar o ciclo de vida do sandbox (up/down limpo). Serviços
+# reais do PortWatch (api, web, docker-socket-proxy, netprobe) entram a
+# partir da Fase 3, quando o Collector existir.
+
+services:
+  fixture-web:
+    image: nginx:alpine
+    container_name: portwatch-dev-fixture-web
+    labels:
+      - "portwatch.env=dev-sandbox"
+    ports:
+      - "127.0.0.1:8081:80"
+    networks:
+      - portwatch-dev-net
+
+networks:
+  portwatch-dev-net:
+    name: portwatch-dev-net
+    labels:
+      - "portwatch.env=dev-sandbox"

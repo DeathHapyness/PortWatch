@@ -2,13 +2,18 @@
 
 Plataforma de monitoramento de homelab — Docker, containers e portas de rede.
 
-Status atual: **Fase 4 — API real (em andamento)**. A fundação do projeto e o
-Collector já estão implementados: o backend coleta containers, redes e portas
-do sandbox via `docker-socket-proxy`/`netprobe`, publica snapshots atômicos em
-memória e expõe readiness real. As rotas de containers, redes e resumo do
-sistema já leem esses snapshots; a integração completa das rotas de portas é o
-item restante desta fase. O frontend ainda é a tela de fundação e será ligado a
-essas APIs nos próximos incrementos. Arquitetura completa e roadmap:
+Status atual: **Fase 4 — API real (concluída)**, iniciando Fase 5/6. Backend:
+o Collector coleta containers, redes e portas do sandbox via
+`docker-socket-proxy`/`netprobe`, publica snapshots atômicos em memória e
+expõe readiness real; todas as rotas (`containers`, `networks`, `system`,
+`ports`) leem esses snapshots — nenhuma retorna mais dados de exemplo.
+Autenticação por token estático (ADR-0004), erros no contrato RFC 7807
+completo (incluindo validação 422 e `request_id` por requisição), e labels/env
+de containers redigidos por padrão (PW-03). Frontend: dashboard funcional
+(Overview/Containers/Networks/Ports) já consumindo essas APIs reais via
+TanStack Query. Falta: WebSocket `/api/v1/events` para atualização em tempo
+real (hoje é poll), testes E2E contra o sandbox real, e observabilidade
+(Fase 9 — métricas Prometheus). Arquitetura completa e roadmap:
 https://claude.ai/code/artifact/b41be8c8-2963-4ef8-a4f7-b984b68407a8
 
 Decisões arquiteturais registradas em `docs/adr/`.

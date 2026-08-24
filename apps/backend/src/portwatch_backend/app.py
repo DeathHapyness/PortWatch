@@ -9,13 +9,14 @@ Phase 3 (see collector/service.py).
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from portwatch_backend.api import containers, health, networks, ports, system
 from portwatch_backend.collector.service import Collector
 from portwatch_backend.collector.state import SnapshotStore
+from portwatch_backend.core.auth import require_api_token
 from portwatch_backend.core.config import get_settings
 from portwatch_backend.core.schemas import ProblemDetail
 
@@ -66,11 +67,16 @@ def create_app() -> FastAPI:
             media_type="application/problem+json",
         )
 
+    # health.router is deliberately excluded — liveness/readiness must stay
+    # reachable without a token (S-01). Everything under /api/v1/* requires
+    # the bearer token per ADR-0004 (a no-op when api_token is empty, which
+    # is only reachable on loopback — see config.validate_bind_security()).
+    protected = [Depends(require_api_token)]
     app.include_router(health.router)
-    app.include_router(system.router)
-    app.include_router(containers.router)
-    app.include_router(networks.router)
-    app.include_router(ports.router)
+    app.include_router(system.router, dependencies=protected)
+    app.include_router(containers.router, dependencies=protected)
+    app.include_router(networks.router, dependencies=protected)
+    app.include_router(ports.router, dependencies=protected)
 
     return app
 

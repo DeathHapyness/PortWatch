@@ -1,0 +1,49 @@
+[
+  {
+    "name": "unpublished ports are absent",
+    "containers": [
+      {
+        "name": "fixture-exposed-only",
+        "ports": [
+          {"container_port": 80, "host_port": null, "protocol": "tcp"}
+        ]
+      }
+    ],
+    "host_ports": [],
+    "expected": []
+  },
+  {
+    "name": "same port keeps tcp and udp entries separate",
+    "containers": [],
+    "host_ports": [
+      {"protocol": "udp", "port": 5353, "family": "ipv6", "address": "::1"},
+      {"protocol": "tcp", "port": 5353, "family": "ipv4", "address": "127.0.0.1"}
+    ],
+    "expected": [
+      {"port": 5353, "protocol": "tcp", "state": "host", "owner": null},
+      {"port": 5353, "protocol": "udp", "state": "host", "owner": null}
+    ]
+  },
+  {
+    "name": "entries sort by protocol then port",
+    "containers": [
+      {
+        "name": "fixture-web",
+        "ports": [
+          {"container_port": 443, "host_port": 9443, "protocol": "tcp"},
+          {"container_port": 80, "host_port": 8080, "protocol": "tcp"}
+        ]
+      }
+    ],
+    "host_ports": [
+      {"protocol": "udp", "port": 53, "family": "ipv4", "address": "0.0.0.0"},
+      {"protocol": "tcp", "port": 22, "family": "ipv6", "address": "::"}
+    ],
+    "expected": [
+      {"port": 22, "protocol": "tcp", "state": "host", "owner": null},
+      {"port": 8080, "protocol": "tcp", "state": "published", "owner": "fixture-web"},
+      {"port": 9443, "protocol": "tcp", "state": "published", "owner": "fixture-web"},
+      {"port": 53, "protocol": "udp", "state": "host", "owner": null}
+    ]
+  }
+]

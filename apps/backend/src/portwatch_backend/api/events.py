@@ -2,14 +2,25 @@
 
 import asyncio
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import HTTPException, WebSocket, WebSocketDisconnect, status
 
 from portwatch_backend.core.auth import validate_api_token
 from portwatch_backend.core.events import SnapshotBroadcaster
 
 
 async def snapshot_events(websocket: WebSocket) -> None:
-    validate_api_token(websocket.headers.get("authorization"))
+    try:
+        validate_api_token(websocket.headers.get("authorization"))
+    except HTTPException:
+        # The app's global HTTPException handler (app.py's
+        # problem_detail_handler) builds an HTTP JSONResponse and reads
+        # request.state.request_id — neither makes sense for a websocket
+        # scope, and request_id_middleware is HTTP-only (app.middleware
+        # "http") so that attribute was never even set here. Letting the
+        # HTTPException propagate crashes the connection with an unhandled
+        # AttributeError instead of a clean auth rejection. Close directly.
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     broadcaster: SnapshotBroadcaster = websocket.app.state.event_broadcaster
 
     await websocket.accept()

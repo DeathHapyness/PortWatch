@@ -1,0 +1,74 @@
+[
+  {
+    "name": "same tcp port on ipv4 and ipv6 interfaces",
+    "containers": [],
+    "host_ports": [
+      {"protocol": "tcp", "port": 8080, "family": "ipv4", "address": "0.0.0.0"},
+      {"protocol": "tcp", "port": 8080, "family": "ipv4", "address": "127.0.0.1"},
+      {"protocol": "tcp", "port": 8080, "family": "ipv6", "address": "::"},
+      {"protocol": "tcp", "port": 8080, "family": "ipv6", "address": "::1"}
+    ],
+    "expected": [
+      {"port": 8080, "protocol": "tcp", "state": "host", "owner": null}
+    ]
+  },
+  {
+    "name": "same numeric port on conflicting protocols",
+    "containers": [],
+    "host_ports": [
+      {"protocol": "udp", "port": 53, "family": "ipv4", "address": "0.0.0.0"},
+      {"protocol": "tcp", "port": 53, "family": "ipv6", "address": "::"},
+      {"protocol": "udp", "port": 53, "family": "ipv6", "address": "::1"}
+    ],
+    "expected": [
+      {"port": 53, "protocol": "tcp", "state": "host", "owner": null},
+      {"port": 53, "protocol": "udp", "state": "host", "owner": null}
+    ]
+  },
+  {
+    "name": "published binding on multiple interfaces wins over host scan",
+    "containers": [
+      {
+        "id": "container-web",
+        "name": "fixture-web",
+        "ports": [
+          {"container_port": 80, "host_port": 8081, "host_ip": "0.0.0.0", "protocol": "tcp"},
+          {"container_port": 80, "host_port": 8081, "host_ip": "127.0.0.1", "protocol": "tcp"},
+          {"container_port": 80, "host_port": 8081, "host_ip": "::", "protocol": "tcp"}
+        ]
+      }
+    ],
+    "host_ports": [
+      {"protocol": "tcp", "port": 8081, "family": "ipv4", "address": "0.0.0.0"},
+      {"protocol": "tcp", "port": 8081, "family": "ipv6", "address": "::"}
+    ],
+    "expected": [
+      {"port": 8081, "protocol": "tcp", "state": "published", "owner": "fixture-web"}
+    ]
+  },
+  {
+    "name": "duplicate published tcp keeps first owner while udp remains distinct",
+    "containers": [
+      {
+        "id": "container-a",
+        "name": "fixture-a",
+        "ports": [
+          {"container_port": 80, "host_port": 9000, "host_ip": "127.0.0.1", "protocol": "tcp"}
+        ]
+      },
+      {
+        "id": "container-b",
+        "name": "fixture-b",
+        "ports": [
+          {"container_port": 80, "host_port": 9000, "host_ip": "127.0.0.1", "protocol": "tcp"},
+          {"container_port": 53, "host_port": 9000, "host_ip": "127.0.0.1", "protocol": "udp"}
+        ]
+      }
+    ],
+    "host_ports": [],
+    "expected": [
+      {"port": 9000, "protocol": "tcp", "state": "published", "owner": "fixture-a"},
+      {"port": 9000, "protocol": "udp", "state": "published", "owner": "fixture-b"}
+    ]
+  }
+]

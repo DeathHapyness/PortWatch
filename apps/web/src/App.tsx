@@ -1,33 +1,78 @@
-import { useQuery } from '@tanstack/react-query'
-import { Button } from '@/components/ui/button'
+import { useQueryClient } from '@tanstack/react-query'
+import * as React from 'react'
 
-type SystemSummary = { portwatch_status: string; docker_version: string | null }
+import { Header, type TabType } from '@/components/layout/Header'
+import { ContainersView } from '@/components/views/ContainersView'
+import { NetworksView } from '@/components/views/NetworksView'
+import { OverviewView } from '@/components/views/OverviewView'
+import { PortsView } from '@/components/views/PortsView'
+import { portwatchQueryKeys, useSystemSummaryQuery } from '@/lib/queries'
 
-async function fetchSystemSummary(): Promise<SystemSummary> {
-  const res = await fetch('/api/v1/system/summary')
-  if (!res.ok) throw new Error(`backend returned ${res.status}`)
-  return res.json()
-}
+export function App() {
+  const [activeTab, setActiveTab] = React.useState<TabType>('overview')
+  const queryClient = useQueryClient()
 
-function App() {
-  const { data, error, isLoading, refetch } = useQuery({
-    queryKey: ['system-summary'],
-    queryFn: fetchSystemSummary,
-  })
+  const {
+    data: systemSummary,
+    isLoading: isSummaryLoading,
+    isFetching: isSummaryFetching,
+    error: summaryError,
+    refetch: refetchSummary,
+  } = useSystemSummaryQuery()
+
+  const handleRefreshAll = () => {
+    queryClient.invalidateQueries({ queryKey: portwatchQueryKeys.all })
+  }
 
   return (
-    <main className="flex min-h-svh flex-col items-center justify-center gap-4 bg-background text-foreground">
-      <h1 className="text-2xl font-semibold">PortWatch</h1>
-      <p className="text-muted-foreground">
-        Foundation check — frontend talking to the backend through the dev proxy.
-      </p>
-      <p className="font-mono text-sm">
-        {isLoading && 'checking /api/v1/system/summary…'}
-        {error && `error: ${(error as Error).message} (is the backend running?)`}
-        {data && `status: ${data.portwatch_status} · docker: ${data.docker_version}`}
-      </p>
-      <Button onClick={() => refetch()}>Recheck</Button>
-    </main>
+    <div className="min-h-screen bg-background text-foreground flex flex-col antialiased selection:bg-primary selection:text-primary-foreground">
+      {/* Header with Navigation and Live Stats */}
+      <Header
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        systemSummary={systemSummary}
+        isLoading={isSummaryLoading}
+        isFetching={isSummaryFetching}
+        onRefresh={handleRefreshAll}
+      />
+
+      {/* Main Content Area */}
+      <main className="flex-1 mx-auto w-full max-w-7xl px-4 sm:px-6 py-6 sm:py-8">
+        {activeTab === 'overview' && (
+          <OverviewView
+            systemSummary={systemSummary}
+            isLoading={isSummaryLoading}
+            error={summaryError}
+            onRetry={refetchSummary}
+            onNavigate={setActiveTab}
+          />
+        )}
+
+        {activeTab === 'containers' && <ContainersView />}
+
+        {activeTab === 'ports' && <PortsView />}
+
+        {activeTab === 'networks' && <NetworksView />}
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-border/80 bg-card/50 py-4 text-center text-xs text-muted-foreground">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-foreground">PortWatch</span>
+            <span>—</span>
+            <span>Homelab Observation Engine</span>
+          </div>
+
+          <div className="flex items-center gap-4 text-[11px]">
+            <span className="rounded bg-muted/60 px-2 py-0.5 font-medium">
+              Read-Only v1 (Safe Mode)
+            </span>
+            <span>Local dev environment</span>
+          </div>
+        </div>
+      </footer>
+    </div>
   )
 }
 

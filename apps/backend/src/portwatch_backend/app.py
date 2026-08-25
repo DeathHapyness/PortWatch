@@ -59,6 +59,7 @@ def create_app() -> FastAPI:
     # Available to routes via request.app.state.* (e.g. Phase 4 wiring the
     # stub endpoints in api/*.py to real data, and /health/ready checking
     # snapshot_store.read().is_stale(...)).
+    app.state.settings = settings
     app.state.snapshot_store = snapshot_store
     app.state.collector = collector
     app.state.event_broadcaster = event_broadcaster

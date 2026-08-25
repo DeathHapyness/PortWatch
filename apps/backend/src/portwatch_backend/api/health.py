@@ -6,16 +6,12 @@ Docker being reachable (see architecture blueprint, section 08/S-01).
 
 /health/ready reflects whether the Collector has a usable snapshot: never
 collected yet, or stale (its poll cycles have been failing — most likely
-docker-socket-proxy is unreachable) both mean "not ready". This was a
-TODO(Phase 3) placeholder before the Collector existed (see app.py /
-collector/service.py) — it is real now.
+docker-socket-proxy is unreachable) both mean "not ready".
 """
 
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Request, Response, status
-
-from portwatch_backend.core.config import get_settings
 
 router = APIRouter(tags=["health"])
 
@@ -43,7 +39,7 @@ async def health_ready(request: Request, response: Response) -> dict[str, object
             "reason": "collector has not completed a first collection cycle yet",
         }
 
-    settings = get_settings()
+    settings = request.app.state.settings
     max_age = timedelta(seconds=settings.collector_poll_interval_seconds * _STALE_CYCLE_TOLERANCE)
     if snapshot.is_stale(now=datetime.now(UTC), max_age=max_age):
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE

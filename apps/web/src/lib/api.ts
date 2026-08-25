@@ -1,3 +1,5 @@
+import { getApiToken } from './config'
+
 export type ContainerStatus = 'running' | 'exited' | 'paused' | 'restarting' | 'dead' | 'created'
 
 export type PortProtocol = 'tcp' | 'udp'
@@ -121,8 +123,14 @@ async function readProblem(response: Response): Promise<ProblemDetail | null> {
 }
 
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const token = getApiToken()
+  const headers: Record<string, string> = {
+    Accept: 'application/json, application/problem+json',
+  }
+  if (token) headers.Authorization = `Bearer ${token}`
+
   const response = await fetch(path, {
-    headers: { Accept: 'application/json, application/problem+json' },
+    headers,
     signal,
   })
 

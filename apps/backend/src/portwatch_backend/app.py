@@ -39,6 +39,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         app.state.collector.stop()
+        app.state.event_broadcaster.close()
 
 
 def create_app() -> FastAPI:

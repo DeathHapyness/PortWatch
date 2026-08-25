@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from portwatch_backend.app import create_app
 from portwatch_backend.collector.state import SnapshotStore
 from portwatch_backend.core.config import Settings
-from portwatch_backend.core.events import SnapshotBroadcaster
+from portwatch_backend.core.events import BroadcasterClosedError, SnapshotBroadcaster
 
 NOW = datetime(2026, 8, 24, 18, 0, tzinfo=UTC)
 
@@ -232,3 +232,77 @@ async def test_websocket_rejects_missing_first_message_after_timeout(
     await asyncio.wait_for(connection, timeout=1)
 
     assert closed == {"type": "websocket.close", "code": 1008, "reason": ""}
+
+
+# --- SnapshotBroadcaster.close() — graceful shutdown --------------------
+
+
+async def test_close_wakes_every_subscriber_with_none() -> None:
+    broadcaster = SnapshotBroadcaster()
+
+    async with broadcaster.subscribe() as first, broadcaster.subscribe() as second:
+        broadcaster.close()
+        first_message, second_message = await asyncio.gather(
+            asyncio.wait_for(first.get(), timeout=1),
+            asyncio.wait_for(second.get(), timeout=1),
+        )
+
+    assert first_message is None
+    assert second_message is None
+
+
+def test_close_is_idempotent() -> None:
+    broadcaster = SnapshotBroadcaster()
+
+    broadcaster.close()
+    broadcaster.close()  # must not raise
+
+    assert broadcaster.closed is True
+
+
+async def test_subscribe_after_close_is_rejected() -> None:
+    broadcaster = SnapshotBroadcaster()
+    broadcaster.close()
+
+    with pytest.raises(BroadcasterClosedError):
+        async with broadcaster.subscribe():
+            pass
+
+
+def test_publish_after_close_is_a_noop() -> None:
+    broadcaster = SnapshotBroadcaster()
+    broadcaster.close()
+
+    broadcaster.publish(1, NOW)  # must not raise or un-close
+
+    assert broadcaster.closed is True
+
+
+async def test_websocket_closes_gracefully_when_the_broadcaster_shuts_down() -> None:
+    app = create_app()
+    _inbound, outbound, connection = await _open_connection(app)
+
+    accepted = await asyncio.wait_for(outbound.get(), timeout=1)
+    assert accepted["type"] == "websocket.accept"
+
+    app.state.event_broadcaster.close()
+    closed = await asyncio.wait_for(outbound.get(), timeout=1)
+    await asyncio.wait_for(connection, timeout=1)
+
+    assert closed == {"type": "websocket.close", "code": 1001, "reason": ""}
+    assert connection.exception() is None
+
+
+async def test_websocket_rejects_new_connections_once_the_broadcaster_is_closed() -> None:
+    app = create_app()
+    app.state.event_broadcaster.close()
+
+    _inbound, outbound, connection = await _open_connection(app)
+
+    closed = await asyncio.wait_for(outbound.get(), timeout=1)
+    await asyncio.wait_for(connection, timeout=1)
+
+    # Rejected before accept() — the very first outbound message is already
+    # the close frame, not an accept followed by a close.
+    assert closed == {"type": "websocket.close", "code": 1001, "reason": ""}
+    assert connection.exception() is None

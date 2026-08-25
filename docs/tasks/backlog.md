@@ -5,44 +5,39 @@ Mantido pelo Lead. Cada item vira um branch `agent/<área>/<slug>` isolado
 pronto, PR/revisão do Lead antes do merge em `main` — nenhum agente faz merge
 do próprio trabalho.
 
-## Concluído
+## Concluído (resumo — detalhes no histórico do git)
 
-### 1. Backend — autenticação do WebSocket via primeira mensagem ✅
-Implementado por Codex em `agent/backend/ws-first-message-auth` (commit
-`c83c25a`), revisado pelo Lead e mergeado em `main` (merge commit, 2026-08-25).
-`apps/backend/src/portwatch_backend/api/events.py` agora aceita a conexão e
-aguarda até 5s por `{"token": "..."}` como primeira mensagem quando não há
-header `Authorization` (browser); o header continua funcionando como
-fallback. Testes em `tests/test_events.py` cobrem sucesso, token errado e
-timeout. Quality gates (ruff/format/mypy/pytest/e2e) verdes.
-
-### 2. Observabilidade — métricas Prometheus (Fase 9) ✅
-Implementado pelo Lead (`agent/backend/observability-metrics`, commit
-`f448232`), com dois follow-ups de correção do Codex, ambos revisados e
-mergeados: cardinalidade de rotas não encontradas (`agent/backend/
-metrics-cardinality-errors`, `5f2bd26`) e — junto — logs estruturados em
-JSON (`agent/backend/structured-logging`, `5afee6d`, ver item 4). `GET
-/metrics` protegido pelo mesmo bearer token; `core/metrics.py`.
-
-### 3. Frontend — consumo do WebSocket no dashboard ✅
-Implementado pelo Lead. `apps/web/src/lib/useSnapshotEvents.ts`: abre
-`/api/v1/events`, manda `{"token": ...}` (via `VITE_API_TOKEN`, ver
-`lib/config.ts`) como primeira mensagem (ADR-0006), invalida
-`portwatchQueryKeys.all` em cada `snapshot.updated`, reconecta com backoff
-exponencial (1s→30s). `vite.config.ts` ganhou `ws: true` no proxy do dev
-server. Testes em `lib/useSnapshotEvents.test.tsx`. `pnpm lint/format:check/
-build/test` verdes.
-
-### 4. Observabilidade — logs estruturados JSON (Fase 9) ✅
-Implementado por Codex (auto-iniciado) em `agent/backend/structured-logging`
-(commit `5afee6d`), revisado pelo Lead e mergeado. `core/logging.py`: JSON
-formatter com schema fixo (não serializa `extra` arbitrário), `request_id`
-correlacionado via `ContextVar` (bind/reset em `request_id_middleware`),
-redação best-effort de `Bearer`/`token=`/`"token":"..."` nas mensagens e
-exceções. Testes em `tests/test_logging.py`.
+WebSocket com auth via primeira mensagem + hardening (tamanho de
+mensagem/token, campos duplicados/inesperados) e desligamento gracioso;
+métricas Prometheus (`GET /metrics`, cardinalidade limitada); logs
+estruturados JSON com redação de segredos; validação de bounds em toda
+`Settings` (portas, poll interval, URLs, log level, token); `/health/ready`
+usando as settings capturadas no startup em vez de reler a cada request;
+validação de shape nas respostas do Docker (`DockerPayloadError`) e do
+netprobe antes de virar estado interno; frontend consumindo o WebSocket
+(`useSnapshotEvents`) e autenticando as chamadas REST com o mesmo bearer
+token; CI rodando a suíte de testes do frontend (antes só lint/build).
+Tudo revisado pelo Lead (testes adicionados onde faltavam — ver
+[[multi-agent-roster]]) e mergeado em `main`.
 
 ## Em aberto
 
-Nenhum item específico no momento — próximas tarefas a definir conforme
-Codex/Copilot ficarem livres. Copilot está focado em cobertura de testes
-adicional por pedido direto do usuário (fora deste backlog formal).
+### Frontend — token de runtime em vez de embutido no build
+- **Contexto:** achado da revisão de segurança de 2026-08-25 (ver README,
+  seção "Ressalva de segurança conhecida"). `VITE_API_TOKEN` é embutido em
+  texto puro no bundle JS pelo Vite — inspecionado diretamente em
+  `dist/assets/*.js` após um build com o valor setado. Em loopback isso não
+  importa; no cenário que a própria ADR-0004 prevê como exigindo token
+  (exposição em LAN/remota), qualquer um que carregue a página consegue
+  extrair o token do JS servido — deixa de funcionar como segredo nesse
+  cenário específico (a API continua barrando quem nunca carregou o
+  frontend, mas não quem carregou).
+- **Escopo:** trocar o token embutido no build por um campo simples na UI
+  (ex.: um diálogo/settings) onde o usuário cola o token uma vez; guardar em
+  `localStorage` (por navegador, nunca no bundle compartilhado — mesmo
+  padrão que `Header.tsx` já usa para o tema). `api.ts`/`useSnapshotEvents.ts`
+  passam a ler de lá em vez de `getApiToken()`/`import.meta.env`. Não é
+  urgente para uso em loopback (o caso de uso atual); vale antes de
+  recomendar exposição em LAN/remota para qualquer usuário.
+- **Dono sugerido:** ainda sem dono — Codex está temporariamente em
+  `agent/website/rework` a pedido do usuário, volta para o backend depois.

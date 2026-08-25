@@ -921,12 +921,88 @@
   }
 
   /* =========================================================
+     Background particle network (full-page, subtle)
+     ========================================================= */
+  function setupBgNet() {
+    var canvas = document.getElementById("bgNet");
+    if (!canvas || !canvas.getContext) return;
+    if (reduceMotion) { canvas.style.display = "none"; return; }
+    var ctx = canvas.getContext("2d");
+    var particles = [];
+    var COUNT = 45;
+    var CONNECT_DIST = 130;
+    var running = false;
+    var rafId = null;
+
+    function createParticles(w, h) {
+      particles = [];
+      for (var i = 0; i < COUNT; i++) {
+        var isCyan = Math.random() > 0.45;
+        particles.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          vx: (Math.random() - 0.5) * 0.3,
+          vy: (Math.random() - 0.5) * 0.3,
+          r: 1 + Math.random() * 1.2,
+          color: isCyan ? "rgba(56,189,248," : "rgba(52,211,153,"
+        });
+      }
+    }
+
+    function draw() {
+      var W = canvas.width = window.innerWidth;
+      var H = canvas.height = window.innerHeight;
+      ctx.clearRect(0, 0, W, H);
+      if (!particles.length) createParticles(W, H);
+      for (var i = 0; i < particles.length; i++) {
+        for (var j = i + 1; j < particles.length; j++) {
+          var dx = particles[i].x - particles[j].x;
+          var dy = particles[i].y - particles[j].y;
+          var dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < CONNECT_DIST) {
+            var alpha = (1 - dist / CONNECT_DIST) * 0.12;
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.strokeStyle = particles[i].color + alpha + ")";
+            ctx.lineWidth = 0.6;
+            ctx.stroke();
+          }
+        }
+      }
+      for (var k = 0; k < particles.length; k++) {
+        var p = particles[k];
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < -10) p.x = W + 10;
+        if (p.x > W + 10) p.x = -10;
+        if (p.y < -10) p.y = H + 10;
+        if (p.y > H + 10) p.y = -10;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = p.color + "0.25)";
+        ctx.fill();
+      }
+      if (running) rafId = requestAnimationFrame(draw);
+    }
+
+    function start() { if (!running) { running = true; rafId = requestAnimationFrame(draw); } }
+    function stop() { running = false; if (rafId) { cancelAnimationFrame(rafId); rafId = null; } }
+
+    start();
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) stop(); else start();
+    });
+  }
+
+  /* =========================================================
      Inicialização principal — try/catch global
      ========================================================= */
   function track(ms, fn) { return window.setTimeout(fn, ms); }
 
   try {
     staticTerminals();
+    setupBgNet();
     setupIOReveal();
     setupHero();
     setupJourney();
@@ -993,6 +1069,8 @@
 
     staticTerminals();
     forceCounters();
+    var bgCanvas = document.getElementById("bgNet");
+    if (bgCanvas) bgCanvas.style.display = "none";
   }
 
 })();

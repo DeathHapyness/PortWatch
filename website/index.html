@@ -69,6 +69,7 @@
       mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, black 30%, transparent 75%);
       will-change: transform;
     }
+    #bgNet { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
 
     .container { width: min(1120px, 100% - 48px); margin-inline: auto; }
 
@@ -821,6 +822,7 @@
   </style>
 </head>
 <body>
+  <canvas id="bgNet" aria-hidden="true"></canvas>
   <div class="backdrop" aria-hidden="true"></div>
 
   <header class="nav">

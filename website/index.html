@@ -278,7 +278,7 @@
     }
     .journey-stage { position: relative; min-height: 30vh; display: flex; align-items: center; justify-content: center; }
     .journey.pinned .journey-stage { position: sticky; top: var(--nav-h); height: calc(100vh - var(--nav-h)); min-height: 0; }
-    .journey.pinned { height: 260vh; }
+    .journey.pinned { height: 160vh; }
     .journey-words {
       list-style: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
       gap: 14px 10px; max-width: 620px; margin-inline: auto; position: relative;
@@ -355,7 +355,7 @@
     html:not(.scrub) .pin-sticky { position: static; height: auto; overflow: visible; padding: 12px 0; }
 
     /* ---------- Preview do dashboard ---------- */
-    html.scrub .pin-stage--dash { height: 380vh; }
+    html.scrub .pin-stage--dash { height: 200vh; }
     .shot-zone { perspective: 1200px; width: 100%; }
     .shot {
       max-width: 900px; margin-inline: auto;
@@ -446,7 +446,7 @@
     }
 
     /* ---------- Portas ---------- */
-    html.scrub .pin-stage--ports { height: 300vh; }
+    html.scrub .pin-stage--ports { height: 180vh; }
     .port-stage-inner { width: 100%; max-width: 980px; margin-inline: auto; }
     .port-groups { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
     .port-group { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; background: var(--surface); }
@@ -578,7 +578,7 @@
     @media (max-width: 720px) { .ep-desc { display: none; } }
 
     /* arquitetura */
-    html.scrub .pin-stage--arch { height: 350vh; }
+    html.scrub .pin-stage--arch { height: 200vh; }
     .arch {
       border: 1px solid var(--border); border-radius: var(--radius);
       background: var(--bg-soft); padding: 40px clamp(16px, 4vw, 48px);

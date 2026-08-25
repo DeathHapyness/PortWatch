@@ -363,17 +363,17 @@
     }
 
     section.classList.add("pinned");
-    /* precompute random offsets (fixed per load) */
+    /* precompute random offsets (fixed per load) — less scattered */
     if (!journeyRandoms) {
       journeyRandoms = words.map(function () {
-        return { rx: rand(-220, 220), ry: rand(-140, 140), rot: rand(-14, 14) };
+        return { rx: rand(-120, 120), ry: rand(-80, 80), rot: rand(-8, 8) };
       });
     }
-    /* initial states: words scattered, nearly invisible */
+    /* initial states: words scattered but visible */
     words.forEach(function (w, i) {
       var r = journeyRandoms[i];
       w.style.transition = "none";
-      w.style.opacity = "0.15";
+      w.style.opacity = "0.4";
       w.style.transform = "translate(" + r.rx + "px," + r.ry + "px) rotate(" + r.rot + "deg)";
     });
     var jFinal = qs(".j-final", section);
@@ -389,7 +389,7 @@
         var wp = clamp((p * totalDuration - i * 180) / 700, 0, 1);
         var e = ease(wp);
         var r = journeyRandoms[i];
-        w.style.opacity = String(lerp(0.15, 1, e));
+        w.style.opacity = String(lerp(0.4, 1, e));
         w.style.transform = "translate(" + (r.rx * (1 - e)) + "px," + (r.ry * (1 - e)) + "px) rotate(" + (r.rot * (1 - e)) + "deg)";
       });
       /* j-final pop at end */
@@ -398,7 +398,7 @@
         var fe = ease(fp);
         var sc = fp < 0.5 ? lerp(1, 1.12, fe * 2) : lerp(1.12, 1, (fe - 0.5) * 2);
         jFinal.style.transform = "scale(" + sc + ")";
-        jFinal.style.opacity = String(lerp(0.15, 1, fe));
+        jFinal.style.opacity = String(lerp(0.4, 1, fe));
       }
     });
   }
@@ -444,14 +444,14 @@
       return;
     }
 
-    /* scrub: initial states */
-    applyInitial(shot, 0, "scale(.92) rotateX(8deg) translateY(20px)");
-    if (bar) applyInitial(bar, 0, "translateY(-6px)");
-    applyInitial(side, 0, "translateX(-18px)");
-    kpis.forEach(function (el) { applyInitial(el, 0, "translateY(12px)"); });
-    panels.forEach(function (el) { applyInitial(el, 0, "translateY(12px)"); });
+    /* scrub: initial states — frame visível desde o início */
+    applyInitial(shot, 0.35, "scale(.96) rotateX(4deg) translateY(10px)");
+    if (bar) applyInitial(bar, 0, "translateY(-4px)");
+    applyInitial(side, 0, "translateX(-12px)");
+    kpis.forEach(function (el) { applyInitial(el, 0, "translateY(8px)"); });
+    panels.forEach(function (el) { applyInitial(el, 0, "translateY(8px)"); });
     bars.forEach(function (b) { b.style.transform = "scaleY(0)"; b.style.transformOrigin = "bottom"; b.style.transition = "none"; });
-    chips.forEach(function (c) { applyInitial(c, 0, "scale(.9) translateY(6px)"); });
+    chips.forEach(function (c) { applyInitial(c, 0, "scale(.9) translateY(4px)"); });
     if (legend) applyInitial(legend, 0);
     var kpiTriggered = false;
 
@@ -463,34 +463,35 @@
 
       function a(from, to) { return ease(seg(p, from, to)); }
 
-      shot.style.opacity = String(a(0, 0.18));
-      shot.style.transform = "scale(" + lerp(0.92, 1, a(0, 0.18)) + ") rotateX(" + lerp(8, 0, a(0, 0.18)) + "deg) translateY(" + lerp(20, 0, a(0, 0.18)) + "px)";
+      /* frame: aparece rápido nos primeiros 12% */
+      shot.style.opacity = String(lerp(0.35, 1, a(0, 0.12)));
+      shot.style.transform = "scale(" + lerp(0.96, 1, a(0, 0.12)) + ") rotateX(" + lerp(4, 0, a(0, 0.12)) + "deg) translateY(" + lerp(10, 0, a(0, 0.12)) + "px)";
 
-      if (bar) { bar.style.opacity = String(a(0.06, 0.2)); bar.style.transform = "translateY(" + lerp(-6, 0, a(0.06, 0.2)) + "px)"; }
+      if (bar) { bar.style.opacity = String(a(0.03, 0.12)); bar.style.transform = "translateY(" + lerp(-4, 0, a(0.03, 0.12)) + "px)"; }
 
-      side.style.opacity = String(a(0.2, 0.38));
-      side.style.transform = "translateX(" + lerp(-18, 0, a(0.2, 0.38)) + "px)";
+      side.style.opacity = String(a(0.10, 0.22));
+      side.style.transform = "translateX(" + lerp(-12, 0, a(0.10, 0.22)) + "px)";
 
-      kpis.forEach(function (el) { el.style.opacity = String(a(0.38, 0.56)); el.style.transform = "translateY(" + lerp(12, 0, a(0.38, 0.56)) + "px)"; });
+      kpis.forEach(function (el) { el.style.opacity = String(a(0.20, 0.34)); el.style.transform = "translateY(" + lerp(8, 0, a(0.20, 0.34)) + "px)"; });
 
-      panels.forEach(function (el) { el.style.opacity = String(a(0.54, 0.72)); el.style.transform = "translateY(" + lerp(12, 0, a(0.54, 0.72)) + "px)"; });
+      panels.forEach(function (el) { el.style.opacity = String(a(0.32, 0.46)); el.style.transform = "translateY(" + lerp(8, 0, a(0.32, 0.46)) + "px)"; });
 
       bars.forEach(function (b, i) {
         var idx = parseInt(b.style.getPropertyValue("--i"), 10) || i;
-        b.style.transform = "scaleY(" + ease(seg(p, 0.58 + idx * 0.012, 0.78 + idx * 0.012)) + ")";
+        b.style.transform = "scaleY(" + ease(seg(p, 0.36 + idx * 0.015, 0.54 + idx * 0.015)) + ")";
       });
 
       chips.forEach(function (c, i) {
         var idx = parseInt(c.style.getPropertyValue("--i"), 10) || i;
-        var cp = ease(seg(p, 0.66 + idx * 0.018, 0.84 + idx * 0.018));
+        var cp = ease(seg(p, 0.42 + idx * 0.02, 0.58 + idx * 0.02));
         c.style.opacity = String(cp);
-        c.style.transform = "scale(" + lerp(0.9, 1, cp) + ") translateY(" + lerp(6, 0, cp) + "px)";
+        c.style.transform = "scale(" + lerp(0.9, 1, cp) + ") translateY(" + lerp(4, 0, cp) + "px)";
       });
 
-      if (legend) legend.style.opacity = String(a(0.82, 0.95));
+      if (legend) legend.style.opacity = String(a(0.60, 0.72));
 
-      if (!kpiTriggered && p >= 0.8) { kpiTriggered = true; kpiNumbers.forEach(animateCount); }
-      else if (kpiTriggered && p < 0.75) { kpiTriggered = false; }
+      if (!kpiTriggered && p >= 0.65) { kpiTriggered = true; kpiNumbers.forEach(animateCount); }
+      else if (kpiTriggered && p < 0.60) { kpiTriggered = false; }
     });
   }
 
@@ -551,27 +552,27 @@
       if (dist <= 0) return;
       var p = clamp(-rect.top / dist, 0, 1);
 
-      /* scattered fly-in [0, 0.45] */
+      /* scattered fly-in [0, 0.35] */
       allScattered.forEach(function (el, i) {
-        var ip = ease(seg(p, i * 22 / 4000, 0.45));
+        var ip = ease(seg(p, i * 22 / 4000, 0.35));
         var r = portsRandoms.scattered[i];
         el.style.opacity = String(ip);
         el.style.transform = "translate(" + (r.rx * (1 - ip)) + "px," + (r.ry * (1 - ip)) + "px) scale(" + lerp(0.75, 1, ip) + ")";
       });
 
-      /* published pulse [0.45, 0.55] */
-      var pp = ease(seg(p, 0.45, 0.55));
+      /* published pulse [0.35, 0.45] */
+      var pp = ease(seg(p, 0.35, 0.45));
       published.forEach(function (el) { el.style.transform = "scale(" + lerp(1, 1.08, pp < 0.5 ? pp * 2 : (1 - pp) * 2) + ")"; });
 
-      /* available fly-in [0.5, 0.85] */
+      /* available fly-in [0.40, 0.70] */
       available.forEach(function (el, i) {
-        var ap = ease(seg(p, 0.5 + i * 24 / 3500, 0.85));
+        var ap = ease(seg(p, 0.40 + i * 24 / 3500, 0.70));
         var r = portsRandoms.avail[i];
         el.style.opacity = String(ap);
         el.style.transform = "translate(" + (r.rx * (1 - ap)) + "px," + (r.ry * (1 - ap)) + "px) scale(" + lerp(0.75, 1, ap) + ")";
       });
 
-      if (legend) legend.style.opacity = String(ease(seg(p, 0.86, 0.96)));
+      if (legend) legend.style.opacity = String(ease(seg(p, 0.72, 0.82)));
     });
   }
 
@@ -758,13 +759,13 @@
       var p = clamp(-rect.top / dist, 0, 1);
       function a(from, to) { return ease(seg(p, from, to)); }
 
-      host.style.opacity = String(a(0, 0.12));
-      host.style.transform = "translateY(" + lerp(14, 0, a(0, 0.12)) + "px) scale(" + lerp(0.96, 1, a(0, 0.12)) + ")";
+      host.style.opacity = String(a(0, 0.10));
+      host.style.transform = "translateY(" + lerp(14, 0, a(0, 0.10)) + "px) scale(" + lerp(0.96, 1, a(0, 0.10)) + ")";
 
       arrowEls.forEach(function (ae, i) {
         if (!ae) return;
-        var from = 0.10 + i * 0.22;
-        var to = from + 0.14;
+        var from = 0.08 + i * 0.18;
+        var to = from + 0.12;
         drawPath(ae.path, a(from, to));
       });
 
@@ -772,8 +773,8 @@
       archPulses.forEach(function (dot, i) {
         var ae = arrowEls[i];
         if (!ae || !ae.path) return;
-        var from = 0.10 + i * 0.22;
-        var to = from + 0.14;
+        var from = 0.08 + i * 0.18;
+        var to = from + 0.12;
         var pp = seg(p, from, to);
         var easeP = (1 - Math.cos(pp * Math.PI)) / 2; /* inOutSine */
         var pt = ae.path.getPointAtLength(ae.len * easeP);
@@ -783,20 +784,20 @@
         dot.style.opacity = String(clamp(fadeIn, 0, 1));
       });
 
-      proxy.style.opacity = String(a(0.22, 0.36));
-      proxy.style.transform = "translateY(" + lerp(14, 0, a(0.22, 0.36)) + "px) scale(" + lerp(0.96, 1, a(0.22, 0.36)) + ")";
+      proxy.style.opacity = String(a(0.18, 0.30));
+      proxy.style.transform = "translateY(" + lerp(14, 0, a(0.18, 0.30)) + "px) scale(" + lerp(0.96, 1, a(0.18, 0.30)) + ")";
 
-      core.style.opacity = String(a(0.48, 0.62));
-      core.style.transform = "translateY(" + lerp(14, 0, a(0.48, 0.62)) + "px) scale(" + lerp(0.96, 1, a(0.48, 0.62)) + ")";
+      core.style.opacity = String(a(0.38, 0.50));
+      core.style.transform = "translateY(" + lerp(14, 0, a(0.38, 0.50)) + "px) scale(" + lerp(0.96, 1, a(0.38, 0.50)) + ")";
 
       [ui, cli].filter(Boolean).forEach(function (el, i) {
-        var from = 0.72 + i * 0.05;
-        var ap = a(from, from + 0.12);
+        var from = 0.56 + i * 0.04;
+        var ap = a(from, from + 0.10);
         el.style.opacity = String(ap);
         el.style.transform = "translateY(" + lerp(14, 0, ap) + "px) scale(" + lerp(0.96, 1, ap) + ")";
       });
 
-      if (note) { note.style.opacity = String(a(0.88, 1)); note.style.transform = "none"; }
+      if (note) { note.style.opacity = String(a(0.70, 0.80)); note.style.transform = "none"; }
 
       /* slight camera lift */
       stageEl.style.transform = "translateY(" + (-16 * p) + "px)";
@@ -925,6 +926,7 @@
   function track(ms, fn) { return window.setTimeout(fn, ms); }
 
   try {
+    staticTerminals();
     setupIOReveal();
     setupHero();
     setupJourney();

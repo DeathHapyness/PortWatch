@@ -15,14 +15,20 @@ from threading import Lock
 
 from portwatch_backend.core.schemas import EventMessage
 
+type BroadcastItem = EventMessage | None
+
+
+class BroadcasterClosedError(RuntimeError):
+    """Raised when a subscription starts after shutdown has begun."""
+
 
 @dataclass(frozen=True, slots=True)
 class _Subscriber:
     loop: asyncio.AbstractEventLoop
-    queue: asyncio.Queue[EventMessage]
+    queue: asyncio.Queue[BroadcastItem]
 
 
-def _offer_latest(queue: asyncio.Queue[EventMessage], message: EventMessage) -> None:
+def _offer_latest(queue: asyncio.Queue[BroadcastItem], message: BroadcastItem) -> None:
     if queue.full():
         queue.get_nowait()
     queue.put_nowait(message)
@@ -35,14 +41,22 @@ class SnapshotBroadcaster:
         self._lock = Lock()
         self._subscribers: set[_Subscriber] = set()
         self._last_generation = 0
+        self._closed = False
+
+    @property
+    def closed(self) -> bool:
+        with self._lock:
+            return self._closed
 
     @asynccontextmanager
-    async def subscribe(self) -> AsyncIterator[asyncio.Queue[EventMessage]]:
+    async def subscribe(self) -> AsyncIterator[asyncio.Queue[BroadcastItem]]:
         subscriber = _Subscriber(
             loop=asyncio.get_running_loop(),
             queue=asyncio.Queue(maxsize=1),
         )
         with self._lock:
+            if self._closed:
+                raise BroadcasterClosedError("snapshot broadcaster is closed")
             self._subscribers.add(subscriber)
         try:
             yield subscriber.queue
@@ -55,7 +69,7 @@ class SnapshotBroadcaster:
 
         message = EventMessage(generation=generation, collected_at=collected_at)
         with self._lock:
-            if generation <= self._last_generation:
+            if self._closed or generation <= self._last_generation:
                 return
             self._last_generation = generation
             subscribers = tuple(self._subscribers)
@@ -73,3 +87,23 @@ class SnapshotBroadcaster:
         if closed:
             with self._lock:
                 self._subscribers.difference_update(closed)
+
+    def close(self) -> None:
+        """Stop future publications and wake every subscriber exactly once."""
+
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            subscribers = tuple(self._subscribers)
+
+        stale: list[_Subscriber] = []
+        for subscriber in subscribers:
+            try:
+                subscriber.loop.call_soon_threadsafe(_offer_latest, subscriber.queue, None)
+            except RuntimeError:
+                stale.append(subscriber)
+
+        if stale:
+            with self._lock:
+                self._subscribers.difference_update(stale)

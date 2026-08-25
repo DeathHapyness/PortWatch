@@ -2,12 +2,13 @@
 
 import asyncio
 import json
+from contextlib import suppress
 from typing import Any
 
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect, status
 
 from portwatch_backend.core.auth import validate_api_token
-from portwatch_backend.core.events import SnapshotBroadcaster
+from portwatch_backend.core.events import BroadcasterClosedError, SnapshotBroadcaster
 
 AUTH_MESSAGE_TIMEOUT_SECONDS = 5.0
 
@@ -64,33 +65,43 @@ async def _authenticate(websocket: WebSocket) -> bool:
 
 
 async def snapshot_events(websocket: WebSocket) -> None:
+    broadcaster: SnapshotBroadcaster = websocket.app.state.event_broadcaster
+    if broadcaster.closed:
+        await websocket.close(code=status.WS_1001_GOING_AWAY)
+        return
     if not await _authenticate(websocket):
         return
-    broadcaster: SnapshotBroadcaster = websocket.app.state.event_broadcaster
 
-    async with broadcaster.subscribe() as events:
-        event_task = asyncio.create_task(events.get())
-        receive_task = asyncio.create_task(websocket.receive())
-        try:
-            while True:
-                done, _ = await asyncio.wait(
-                    {event_task, receive_task},
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
+    try:
+        async with broadcaster.subscribe() as events:
+            event_task = asyncio.create_task(events.get())
+            receive_task = asyncio.create_task(websocket.receive())
+            try:
+                while True:
+                    done, _ = await asyncio.wait(
+                        {event_task, receive_task},
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
 
-                if receive_task in done:
-                    message = receive_task.result()
-                    if message["type"] == "websocket.disconnect":
-                        return
-                    receive_task = asyncio.create_task(websocket.receive())
+                    if receive_task in done:
+                        message = receive_task.result()
+                        if message["type"] == "websocket.disconnect":
+                            return
+                        receive_task = asyncio.create_task(websocket.receive())
 
-                if event_task in done:
-                    event = event_task.result()
-                    await websocket.send_json(event.model_dump(mode="json"))
-                    event_task = asyncio.create_task(events.get())
-        except WebSocketDisconnect:
-            return
-        finally:
-            event_task.cancel()
-            receive_task.cancel()
-            await asyncio.gather(event_task, receive_task, return_exceptions=True)
+                    if event_task in done:
+                        event = event_task.result()
+                        if event is None:
+                            await websocket.close(code=status.WS_1001_GOING_AWAY)
+                            return
+                        await websocket.send_json(event.model_dump(mode="json"))
+                        event_task = asyncio.create_task(events.get())
+            except WebSocketDisconnect:
+                return
+            finally:
+                event_task.cancel()
+                receive_task.cancel()
+                await asyncio.gather(event_task, receive_task, return_exceptions=True)
+    except BroadcasterClosedError:
+        with suppress(WebSocketDisconnect):
+            await websocket.close(code=status.WS_1001_GOING_AWAY)

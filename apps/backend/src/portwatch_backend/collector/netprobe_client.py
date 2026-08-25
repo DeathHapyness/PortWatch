@@ -7,7 +7,8 @@ Settings.netprobe_url is None, the Collector simply skips host-port
 scanning and reports host_ports_enabled=False, per core/config.py.
 """
 
-from typing import TypedDict
+import ipaddress
+from typing import Any, TypedDict
 
 import httpx
 
@@ -21,6 +22,41 @@ class HostPortEntry(TypedDict):
 
 class NetprobeError(RuntimeError):
     """Raised when netprobe is configured but unreachable or returns garbage."""
+
+
+def _validate_host_port_entry(value: Any, *, index: int) -> HostPortEntry:
+    if not isinstance(value, dict):
+        raise NetprobeError(f"netprobe ports[{index}] must be an object")
+
+    protocol = value.get("protocol")
+    if protocol not in {"tcp", "udp"}:
+        raise NetprobeError(f"netprobe ports[{index}].protocol must be 'tcp' or 'udp'")
+
+    family = value.get("family")
+    if family not in {"ipv4", "ipv6"}:
+        raise NetprobeError(f"netprobe ports[{index}].family must be 'ipv4' or 'ipv6'")
+
+    address = value.get("address")
+    if not isinstance(address, str) or not address:
+        raise NetprobeError(f"netprobe ports[{index}].address must be a non-empty string")
+    try:
+        parsed_address = ipaddress.ip_address(address)
+    except ValueError as exc:
+        raise NetprobeError(f"netprobe ports[{index}].address is not a valid IP address") from exc
+    expected_version = 4 if family == "ipv4" else 6
+    if parsed_address.version != expected_version:
+        raise NetprobeError(f"netprobe ports[{index}].address does not match its declared family")
+
+    port = value.get("port")
+    if not isinstance(port, int) or isinstance(port, bool) or not 0 <= port <= 65535:
+        raise NetprobeError(f"netprobe ports[{index}].port must be an integer from 0 to 65535")
+
+    return HostPortEntry(
+        protocol=protocol,
+        family=family,
+        address=address,
+        port=port,
+    )
 
 
 def fetch_host_ports(netprobe_url: str, *, timeout: float = 5.0) -> list[HostPortEntry]:
@@ -41,7 +77,10 @@ def fetch_host_ports(netprobe_url: str, *, timeout: float = 5.0) -> list[HostPor
     except ValueError as exc:  # invalid JSON
         raise NetprobeError(f"netprobe response from {url} was not valid JSON: {exc}") from exc
 
+    if not isinstance(payload, dict):
+        raise NetprobeError("netprobe response root must be a JSON object")
+
     ports = payload.get("ports")
     if not isinstance(ports, list):
         raise NetprobeError(f"netprobe response from {url} is missing a 'ports' array")
-    return ports
+    return [_validate_host_port_entry(entry, index=index) for index, entry in enumerate(ports)]

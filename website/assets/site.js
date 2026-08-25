@@ -583,69 +583,126 @@
     var svgEl = document.getElementById("netGraph");
     var wrap = qs(".netgraph-wrap");
     if (!svgEl) return;
-    var containerNodes = qsa("rect.ng-node:not(.hub)", svgEl);
+    var containerNodes = qsa("rect.ng-node:not(.hub):not(.ng-node--dash)", svgEl);
     var hubNodes = qsa("rect.ng-node.hub", svgEl);
+    var dashNode = qs(".ng-node--dash", svgEl);
     var edges = qsa(".ng-edge", svgEl);
     var labels = qsa(".ng-label");
     var pulses = qsa(".ng-pulse", svgEl);
+    var scanLine = qs(".ng-scan", svgEl);
 
     /* initial states (hidden by html.js) */
     containerNodes.concat(hubNodes).forEach(function (el) { applyInitial(el, 0, "scale(.5)"); });
+    if (dashNode) applyInitial(dashNode, 0, "scale(.5)");
     edges.forEach(function (el) { applyInitial(el); el.style.strokeDashoffset = "1"; el.style.strokeDasharray = "1"; });
     labels.forEach(function (el) { applyInitial(el, 0); });
     pulses.forEach(function (el) { applyInitial(el, 0); });
 
     var drawn = false;
-    var pulseRAF = null;
+    var pulseRAFs = [];
+    var breatheRAF = null;
+    var scanRAF = null;
 
+    /* --- pulse animation: all edges, green for containers→hubs, cyan for hubs→dashboard --- */
     function startPulses() {
       if (reduceMotion || !edges.length) return;
-      var edgeEls = edges.slice(0, pulses.length);
       pulses.forEach(function (dot, i) {
-        var edge = edgeEls[i];
+        var edge = edges[i];
         if (!edge) return;
         var len = edge.getTotalLength ? edge.getTotalLength() : 100;
-        var offset = i * 500;
-        var dur = 2200;
+        var offset = i * 420;
+        var dur = 1800 + (i >= 5 ? 600 : 0);
         function tick(ts) {
           var t = ((ts - offset) % dur) / dur;
           if (t < 0) t += 1;
-          var easeT = (1 - Math.cos(t * Math.PI * 2)) / 2; /* inOutSine */
+          var easeT = (1 - Math.cos(t * Math.PI * 2)) / 2;
           var pt = edge.getPointAtLength(len * easeT);
           dot.setAttribute("cx", pt.x);
           dot.setAttribute("cy", pt.y);
-          var fadeIn = t < 0.1 ? t / 0.1 : t > 0.85 ? (1 - t) / 0.15 : 1;
+          var fadeIn = t < 0.08 ? t / 0.08 : t > 0.88 ? (1 - t) / 0.12 : 1;
           dot.style.opacity = String(clamp(fadeIn, 0, 1));
-          pulseRAF = window.requestAnimationFrame(tick);
+          pulseRAFs[i] = window.requestAnimationFrame(tick);
         }
-        pulseRAF = window.requestAnimationFrame(tick);
+        pulseRAFs[i] = window.requestAnimationFrame(tick);
       });
     }
 
-    function stopPulses() { if (pulseRAF) { window.cancelAnimationFrame(pulseRAF); pulseRAF = null; } }
+    function stopPulses() {
+      pulseRAFs.forEach(function (id) { if (id) window.cancelAnimationFrame(id); });
+      pulseRAFs = [];
+    }
 
+    /* --- node breathing: subtle opacity oscillation after reveal --- */
+    function startBreathing() {
+      if (reduceMotion) return;
+      var phase = 0;
+      containerNodes.forEach(function (el) { el.style.transition = "none"; });
+      hubNodes.forEach(function (el) { el.style.transition = "none"; });
+      if (dashNode) dashNode.style.transition = "none";
+      function tick() {
+        phase += 0.014;
+        var cb = 0.82 + 0.18 * Math.sin(phase);
+        containerNodes.forEach(function (el) { el.style.opacity = String(cb); });
+        hubNodes.forEach(function (el, i) {
+          el.style.opacity = String(0.85 + 0.15 * Math.sin(phase * 1.4 + i * 1.2));
+        });
+        if (dashNode) dashNode.style.opacity = String(0.88 + 0.12 * Math.sin(phase * 0.9 + 0.5));
+        breatheRAF = window.requestAnimationFrame(tick);
+      }
+      breatheRAF = window.requestAnimationFrame(tick);
+    }
+
+    function stopBreathing() {
+      if (breatheRAF) { window.cancelAnimationFrame(breatheRAF); breatheRAF = null; }
+    }
+
+    /* --- scan line: vertical line sweeping left→right --- */
+    function startScan() {
+      if (reduceMotion || !scanLine) return;
+      var svgW = 640;
+      var dur = 3200;
+      function tick(ts) {
+        var t = (ts % dur) / dur;
+        var x = t * (svgW + 40) - 20;
+        scanLine.setAttribute("x", String(x));
+        var fadeIn = t < 0.04 ? t / 0.04 : t > 0.92 ? (1 - t) / 0.08 : 1;
+        scanLine.style.opacity = String(clamp(fadeIn * 0.22, 0, 0.22));
+        scanRAF = window.requestAnimationFrame(tick);
+      }
+      scanRAF = window.requestAnimationFrame(tick);
+    }
+
+    function stopScan() {
+      if (scanRAF) { window.cancelAnimationFrame(scanRAF); scanRAF = null; }
+    }
+
+    function stopAll() { stopPulses(); stopBreathing(); stopScan(); }
+
+    /* --- IO trigger --- */
     var io = new IntersectionObserver(function (ents) {
-      if (!ents[0].isIntersecting) { if (drawn) stopPulses(); return; }
+      if (!ents[0].isIntersecting) { if (drawn) stopAll(); return; }
       io.unobserve(wrap || svgEl);
-      if (drawn) { startPulses(); return; }
+      if (drawn) { startPulses(); startBreathing(); startScan(); return; }
       drawn = true;
       /* staggered reveal via timeouts */
       containerNodes.forEach(function (el, i) {
-        track(90 * i, function () { el.style.transition = "opacity .5s var(--ease), transform .5s var(--ease)"; el.style.opacity = "1"; el.style.transform = "none"; });
+        track(80 * i, function () { el.style.transition = "opacity .5s var(--ease), transform .5s var(--ease)"; el.style.opacity = "1"; el.style.transform = "none"; });
       });
       hubNodes.forEach(function (el, i) {
-        track(260 + i * 90, function () { el.style.transition = "opacity .5s var(--ease), transform .5s var(--ease)"; el.style.opacity = "1"; el.style.transform = "none"; });
+        track(220 + i * 80, function () { el.style.transition = "opacity .5s var(--ease), transform .5s var(--ease)"; el.style.opacity = "1"; el.style.transform = "none"; });
       });
+      if (dashNode) {
+        track(420, function () { dashNode.style.transition = "opacity .6s var(--ease), transform .6s var(--ease)"; dashNode.style.opacity = "1"; dashNode.style.transform = "none"; });
+      }
       labels.forEach(function (el, i) {
-        track(200 + i * 60, function () { el.style.transition = "opacity .5s var(--ease)"; el.style.opacity = "1"; });
+        track(170 + i * 55, function () { el.style.transition = "opacity .5s var(--ease)"; el.style.opacity = "1"; });
       });
       edges.forEach(function (el, i) {
-        track(420 + i * 110, function () {
-          el.style.transition = "stroke-dashoffset .7s var(--ease)";
-          el.style.strokeDashoffset = "0";
-        });
+        track(360 + i * 95, function () { el.style.transition = "stroke-dashoffset .7s var(--ease)"; el.style.strokeDashoffset = "0"; });
       });
-      track(800, startPulses);
+      track(720, startPulses);
+      track(880, startBreathing);
+      track(920, startScan);
     }, { threshold: 0.15 });
     io.observe(wrap || svgEl);
   }

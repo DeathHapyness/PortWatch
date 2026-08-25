@@ -475,14 +475,19 @@
     /* ---------- Redes ---------- */
     .netgraph-wrap { position: relative; max-width: 760px; margin-inline: auto; }
     .netgraph { width: 100%; height: auto; overflow: visible; }
+    .netgraph .ng-grid { opacity: .4; }
     .netgraph .ng-node { fill: var(--bg-soft); stroke: var(--border-strong); stroke-width: 1.4; }
     .netgraph .ng-node.hub { stroke: rgba(52, 211, 153, 0.55); fill: rgba(52, 211, 153, 0.08); }
-    .netgraph .ng-edge { fill: none; stroke: var(--cyan); stroke-width: 1.4; opacity: .55; }
+    .netgraph .ng-node--dash { stroke: var(--cyan); stroke-width: 1.8; fill: rgba(56, 189, 248, 0.06); }
+    .netgraph .ng-edge { fill: none; stroke: var(--cyan); stroke-width: 1.4; opacity: .45; }
+    .netgraph .ng-edge--out { opacity: .6; stroke-width: 1.6; }
     html.js .netgraph .ng-edge { stroke-dasharray: 1; stroke-dashoffset: 1; }
     html:not(.js) .netgraph .ng-edge { stroke-dasharray: none; }
     .netgraph .ng-pulse { fill: var(--green); opacity: 0; }
-    html.js .netgraph .ng-node, html.js .netgraph .ng-node.hub { opacity: 0; transform-box: fill-box; transform-origin: center; transform: scale(.5); }
-    html:not(.js) .netgraph .ng-node { opacity: 1; transform: none; }
+    .netgraph .ng-pulse.fe-pulse { fill: var(--cyan); }
+    .ng-scan { fill: var(--cyan); opacity: 0; }
+    html.js .netgraph .ng-node, html.js .netgraph .ng-node.hub, html.js .netgraph .ng-node--dash { opacity: 0; transform-box: fill-box; transform-origin: center; transform: scale(.5); }
+    html:not(.js) .netgraph .ng-node, html:not(.js) .netgraph .ng-node--dash { opacity: 1; transform: none; }
     .ng-labels { position: absolute; inset: 0; pointer-events: none; }
     .ng-label {
       position: absolute; transform: translate(-50%, -50%);
@@ -799,7 +804,8 @@
       html.js .reveal, html.js .reveal--left, html.js .reveal--right, html.js .reveal--zoom,
       html.js .terminal-wrap, html.js .shot, html.js .bar, html.js .pchip, html.js .node,
       html.js .chip, html.js .hero-graph .hg-node, html.js .hero-graph .hg-ring,
-      html.js .port-node, html.js .netgraph .ng-node, html.js .ng-label, html.js .arch-note,
+      html.js .port-node, html.js .netgraph .ng-node, html.js .netgraph .ng-node--dash,
+      html.js .ng-label, html.js .arch-note,
       html.js .shot-layer, html.js .ic-item {
         opacity: 1 !important; transform: none !important;
       }
@@ -807,6 +813,7 @@
       html.js .bd-net path, html.js .bd-heart path, html.js .ic-path {
         stroke-dashoffset: 0 !important;
       }
+      html.js .ng-scan, html.js .ng-pulse { opacity: 0 !important; }
       html.js .tl-fill { transform: none !important; }
       .pin-stage { height: auto !important; }
       .pin-sticky { position: static !important; height: auto !important; overflow: visible !important; }
@@ -1085,23 +1092,36 @@
       </div>
       <div class="netgraph-wrap">
         <svg class="netgraph" id="netGraph" viewBox="0 0 640 320" aria-hidden="true">
+          <defs>
+            <pattern id="ngGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <circle cx="10" cy="10" r="0.6" fill="var(--border)" opacity=".35"/>
+            </pattern>
+            <filter id="ngGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>
+              <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+            </filter>
+          </defs>
+          <rect class="ng-grid" width="640" height="320" fill="url(#ngGrid)"/>
           <path class="ng-edge" data-edge pathLength="1" d="M90,50 C200,50 220,110 320,110" />
           <path class="ng-edge" data-edge pathLength="1" d="M90,140 C200,140 220,115 320,115" />
           <path class="ng-edge" data-edge pathLength="1" d="M90,140 C220,180 250,235 320,235" />
           <path class="ng-edge" data-edge pathLength="1" d="M90,230 C220,230 250,235 320,235" />
           <path class="ng-edge" data-edge pathLength="1" d="M90,300 C220,290 250,240 320,235" />
-          <path class="ng-edge" data-edge pathLength="1" d="M360,112 C460,112 460,180 560,180" />
-          <path class="ng-edge" data-edge pathLength="1" d="M360,235 C460,235 460,180 560,180" />
+          <path class="ng-edge ng-edge--out" data-edge pathLength="1" d="M360,112 C460,112 460,180 560,180" />
+          <path class="ng-edge ng-edge--out" data-edge pathLength="1" d="M360,235 C460,235 460,180 560,180" />
           <rect class="ng-node" x="55" y="35" width="70" height="30" rx="7" />
           <rect class="ng-node" x="55" y="125" width="70" height="30" rx="7" />
           <rect class="ng-node" x="55" y="215" width="70" height="30" rx="7" />
           <rect class="ng-node" x="55" y="285" width="70" height="30" rx="7" />
           <rect class="ng-node hub" x="320" y="94" width="120" height="36" rx="10" />
           <rect class="ng-node hub" x="320" y="217" width="120" height="36" rx="10" />
-          <rect class="ng-node" x="560" y="162" width="70" height="36" rx="9" />
+          <rect class="ng-node ng-node--dash" x="560" y="162" width="70" height="36" rx="9" />
           <circle class="ng-pulse" data-pulse r="3.5" />
           <circle class="ng-pulse" data-pulse r="3.5" />
           <circle class="ng-pulse" data-pulse r="3.5" />
+          <circle class="ng-pulse fe-pulse" data-pulse r="3.5" />
+          <circle class="ng-pulse fe-pulse" data-pulse r="3.5" />
+          <rect class="ng-scan" x="0" y="0" width="1.5" height="320" rx="1"/>
         </svg>
         <div class="ng-labels" aria-hidden="true">
           <span class="ng-label" style="left:14.06%;top:15.6%"><b>nginx-proxy</b>container</span>

@@ -574,6 +574,69 @@
 
       if (legend) legend.style.opacity = String(ease(seg(p, 0.72, 0.82)));
     });
+
+    /* --- port map SVG animation --- */
+    var pmWrap = qs(".port-map-wrap", pin);
+    var pmSvg = qs(".port-map", pin);
+    var pmPulses = qsa(".pm-pulse", pmSvg);
+    var pmLines = qsa(".pm-line", pmSvg);
+    var pmBoxes = qsa(".pm-box", pmSvg);
+    var pmDrawn = false;
+    var pmPulseRAFs = [];
+
+    if (pmSvg && pmPulses.length && !reduceMotion && !mobile) {
+      pmPulses.forEach(function (el) { el.style.opacity = "0"; });
+      pmBoxes.forEach(function (el) { el.style.opacity = "0"; el.style.transform = "scale(.8)"; el.style.transformOrigin = "center"; el.style.transformBox = "fill-box"; });
+
+      var pmIO = new IntersectionObserver(function (ents) {
+        if (!ents[0].isIntersecting) {
+          if (pmDrawn) { pmPulseRAFs.forEach(function (id) { if (id) cancelAnimationFrame(id); }); pmPulseRAFs = []; }
+          return;
+        }
+        pmIO.unobserve(pmWrap || pmSvg);
+        if (pmDrawn) { startPmPulses(); return; }
+        pmDrawn = true;
+        /* staggered reveal */
+        pmBoxes.forEach(function (el, i) {
+          track(80 * i, function () {
+            el.style.transition = "opacity .4s var(--ease), transform .4s var(--ease)";
+            el.style.opacity = "1"; el.style.transform = "none";
+          });
+        });
+        pmLines.forEach(function (el, i) {
+          track(200 + i * 60, function () {
+            el.style.transition = "opacity .4s var(--ease)";
+            el.style.opacity = "";
+          });
+        });
+        track(600, startPmPulses);
+      }, { threshold: 0.15 });
+      pmIO.observe(pmWrap || pmSvg);
+    }
+
+    function startPmPulses() {
+      if (reduceMotion || !pmPulses.length) return;
+      var lines = pmLines;
+      pmPulses.forEach(function (dot, i) {
+        var edge = lines[i];
+        if (!edge) return;
+        var len = edge.getTotalLength ? edge.getTotalLength() : 100;
+        var offset = i * 600;
+        var dur = 2400;
+        function tick(ts) {
+          var t = ((ts - offset) % dur) / dur;
+          if (t < 0) t += 1;
+          var easeT = (1 - Math.cos(t * Math.PI * 2)) / 2;
+          var pt = edge.getPointAtLength(len * easeT);
+          dot.setAttribute("cx", pt.x);
+          dot.setAttribute("cy", pt.y);
+          var fadeIn = t < 0.08 ? t / 0.08 : t > 0.88 ? (1 - t) / 0.12 : 1;
+          dot.style.opacity = String(clamp(fadeIn, 0, 1));
+          pmPulseRAFs[i] = requestAnimationFrame(tick);
+        }
+        pmPulseRAFs[i] = requestAnimationFrame(tick);
+      });
+    }
   }
 
   /* =========================================================

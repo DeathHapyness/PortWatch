@@ -468,8 +468,32 @@
     html.js .port-node { opacity: 0; }
     html:not(.js) .port-node { opacity: 1; }
     .port-legend { justify-content: center; margin-top: 20px; }
+    .pdot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-right: 2px; align-self: center; }
+    .pdot--pub { background: var(--green); box-shadow: 0 0 6px rgba(52,211,153,.5); animation: pdotPulse 2s ease-in-out infinite; }
+    .pdot--busy { background: var(--amber); }
+    .pdot--free { background: var(--faint); border: 1px dashed var(--muted); animation: none; }
+    @keyframes pdotPulse { 0%,100% { box-shadow: 0 0 4px rgba(52,211,153,.4); } 50% { box-shadow: 0 0 10px rgba(52,211,153,.8); } }
+    .p-traffic { display: inline-flex; gap: 3px; margin-left: 4px; align-self: center; }
+    .p-traffic i { width: 3px; height: 3px; border-radius: 50%; background: var(--green); opacity: 0; animation: trafficDot 1.6s ease-in-out infinite; }
+    .p-traffic i:nth-child(2) { animation-delay: .3s; }
+    .p-traffic i:nth-child(3) { animation-delay: .6s; }
+    @keyframes trafficDot { 0%,100% { opacity: 0; transform: translateY(0); } 30% { opacity: .8; } 70% { opacity: .8; transform: translateY(-4px); } }
+    .port-map-wrap { position: relative; max-width: 520px; margin: 24px auto 0; }
+    .port-map { width: 100%; height: auto; overflow: visible; }
+    .pm-line { stroke: var(--cyan); stroke-width: 1.2; opacity: .35; }
+    .pm-line--out { opacity: .5; stroke-dasharray: 4 3; }
+    .pm-box { fill: var(--bg-soft); stroke: var(--border-strong); stroke-width: 1.2; }
+    .pm-box--net { fill: rgba(52,211,153,.06); stroke: rgba(52,211,153,.4); }
+    .pm-box--dash { fill: rgba(56,189,248,.06); stroke: rgba(56,189,248,.5); stroke-width: 1.6; }
+    .pm-pulse { fill: var(--green); opacity: 0; }
+    .pm-labels { position: absolute; inset: 0; pointer-events: none; }
+    .pm-label { position: absolute; font-family: var(--mono); font-size: .6rem; color: var(--muted); transform: translate(-50%,-50%); white-space: nowrap; }
+    .pm-label b { color: var(--text); font-size: .65rem; }
+    html.js .pm-pulse { opacity: 0; }
+    html.js .pm-line { stroke-dashoffset: 0; }
     @media (max-width: 860px) {
       .port-groups { grid-template-columns: 1fr; }
+      .port-map-wrap { display: none; }
     }
 
     /* ---------- Redes ---------- */
@@ -815,6 +839,8 @@
       }
       html.js .ng-scan, html.js .ng-pulse { opacity: 0 !important; }
       html.js .tl-fill { transform: none !important; }
+      html.js .pdot--pub { animation: none !important; }
+      html.js .p-traffic i { animation: none !important; opacity: 0 !important; }
       .pin-stage { height: auto !important; }
       .pin-sticky { position: static !important; height: auto !important; overflow: visible !important; }
       .journey.pinned { height: auto !important; }
@@ -1047,29 +1073,57 @@
               <div class="port-group g-published">
                 <h3><i></i>publicadas</h3>
                 <div class="port-nodes">
-                  <span class="port-node">443<small>nginx-proxy</small></span>
-                  <span class="port-node">80<small>nginx-proxy</small></span>
-                  <span class="port-node">3000<small>grafana</small></span>
-                  <span class="port-node">8096<small>jellyfin</small></span>
+                  <span class="port-node"><i class="pdot pdot--pub"></i>443<small>nginx-proxy</small><span class="p-traffic" aria-hidden="true"><i></i><i></i><i></i></span></span>
+                  <span class="port-node"><i class="pdot pdot--pub"></i>80<small>nginx-proxy</small><span class="p-traffic" aria-hidden="true"><i></i><i></i><i></i></span></span>
+                  <span class="port-node"><i class="pdot pdot--pub"></i>3000<small>grafana</small><span class="p-traffic" aria-hidden="true"><i></i><i></i></span></span>
+                  <span class="port-node"><i class="pdot pdot--pub"></i>8096<small>jellyfin</small><span class="p-traffic" aria-hidden="true"><i></i></span></span>
                 </div>
               </div>
               <div class="port-group g-occupied">
                 <h3><i></i>ocupadas</h3>
                 <div class="port-nodes">
-                  <span class="port-node">5432<small>postgres</small></span>
-                  <span class="port-node">22<small>sshd</small></span>
-                  <span class="port-node">3100<small>loki</small></span>
-                  <span class="port-node">4533<small>navidrome</small></span>
+                  <span class="port-node"><i class="pdot pdot--busy"></i>5432<small>postgres</small></span>
+                  <span class="port-node"><i class="pdot pdot--busy"></i>22<small>sshd</small></span>
+                  <span class="port-node"><i class="pdot pdot--busy"></i>3100<small>loki</small></span>
+                  <span class="port-node"><i class="pdot pdot--busy"></i>4533<small>navidrome</small></span>
                 </div>
               </div>
               <div class="port-group g-available">
                 <h3><i></i>livres no host</h3>
                 <div class="port-nodes">
-                  <span class="port-node">8080<small>livre</small></span>
-                  <span class="port-node">9090<small>livre</small></span>
-                  <span class="port-node">6379<small>livre</small></span>
-                  <span class="port-node">27017<small>livre</small></span>
+                  <span class="port-node"><i class="pdot pdot--free"></i>8080<small>livre</small></span>
+                  <span class="port-node"><i class="pdot pdot--free"></i>9090<small>livre</small></span>
+                  <span class="port-node"><i class="pdot pdot--free"></i>6379<small>livre</small></span>
+                  <span class="port-node"><i class="pdot pdot--free"></i>27017<small>livre</small></span>
                 </div>
+              </div>
+            </div>
+            <div class="port-map-wrap">
+              <svg class="port-map" viewBox="0 0 640 100" aria-hidden="true">
+                <line class="pm-line" x1="40" y1="20" x2="240" y2="20" />
+                <line class="pm-line" x1="40" y1="50" x2="240" y2="50" />
+                <line class="pm-line" x1="40" y1="80" x2="240" y2="80" />
+                <line class="pm-line pm-line--out" x1="260" y1="20" x2="420" y2="50" />
+                <line class="pm-line pm-line--out" x1="260" y1="50" x2="420" y2="50" />
+                <line class="pm-line pm-line--out" x1="260" y1="80" x2="420" y2="50" />
+                <rect class="pm-box" x="8" y="8" width="64" height="24" rx="5" />
+                <rect class="pm-box" x="8" y="38" width="64" height="24" rx="5" />
+                <rect class="pm-box" x="8" y="68" width="64" height="24" rx="5" />
+                <rect class="pm-box pm-box--net" x="148" y="12" width="90" height="20" rx="5" />
+                <rect class="pm-box pm-box--net" x="148" y="42" width="90" height="20" rx="5" />
+                <rect class="pm-box pm-box--net" x="148" y="72" width="90" height="20" rx="5" />
+                <rect class="pm-box pm-box--dash" x="432" y="30" width="80" height="40" rx="8" />
+                <circle class="pm-pulse" r="3" />
+                <circle class="pm-pulse" r="3" />
+                <circle class="pm-pulse" r="3" />
+              </svg>
+              <div class="pm-labels" aria-hidden="true">
+                <span class="pm-label" style="left:3%;top:8%"><b>:443</b></span>
+                <span class="pm-label" style="left:3%;top:38%"><b>:80</b></span>
+                <span class="pm-label" style="left:3%;top:68%"><b>:3000</b></span>
+                <span class="pm-label" style="left:26%;top:8%"><b>frontend-net</b></span>
+                <span class="pm-label" style="left:26%;top:55%"><b>backend-net</b></span>
+                <span class="pm-label" style="left:72%;top:38%"><b>grafana</b></span>
               </div>
             </div>
             <div class="legend port-legend" aria-hidden="true">
@@ -1116,6 +1170,8 @@
           <rect class="ng-node hub" x="320" y="94" width="120" height="36" rx="10" />
           <rect class="ng-node hub" x="320" y="217" width="120" height="36" rx="10" />
           <rect class="ng-node ng-node--dash" x="560" y="162" width="70" height="36" rx="9" />
+          <circle class="ng-pulse" data-pulse r="3.5" />
+          <circle class="ng-pulse" data-pulse r="3.5" />
           <circle class="ng-pulse" data-pulse r="3.5" />
           <circle class="ng-pulse" data-pulse r="3.5" />
           <circle class="ng-pulse" data-pulse r="3.5" />

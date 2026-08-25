@@ -18,7 +18,8 @@ than failing the whole cycle.
 import logging
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from typing import Any
 
 import docker
 from docker.errors import DockerException
@@ -42,6 +43,28 @@ from portwatch_backend.core.schemas import ContainerDetail, NetworkSummary
 logger = logging.getLogger(__name__)
 
 ClientFactory = Callable[[], docker.DockerClient]
+
+
+def _resource_hint(resource: Any) -> str:
+    """Return a safe identifier for warnings about malformed Docker objects."""
+
+    resource_id = getattr(resource, "id", None)
+    return resource_id[:12] if isinstance(resource_id, str) and resource_id else "?"
+
+
+def _parse_version_info(payload: Any) -> tuple[str | None, str | None]:
+    """Validate the small portion of `/version` persisted in snapshots."""
+
+    if not isinstance(payload, Mapping):
+        raise RuntimeError("Docker /version response must be an object")
+
+    values: list[str | None] = []
+    for field in ("Version", "ApiVersion"):
+        value = payload.get(field)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise RuntimeError(f"Docker /version field {field} must be a non-empty string or null")
+        values.append(value)
+    return values[0], values[1]
 
 
 class Collector:
@@ -138,6 +161,7 @@ class Collector:
             version_info = client.version()
         except DockerException as exc:
             raise RuntimeError(f"docker-socket-proxy unreachable: {exc}") from exc
+        docker_version, docker_api_version = _parse_version_info(version_info)
 
         containers = self._collect_containers(client, warnings)
         networks = self._collect_networks(client, warnings)
@@ -149,8 +173,8 @@ class Collector:
             containers=containers,
             networks=networks,
             ports=ports,
-            docker_version=version_info.get("Version"),
-            docker_api_version=version_info.get("ApiVersion"),
+            docker_version=docker_version,
+            docker_api_version=docker_api_version,
             host_ports_enabled=host_ports_enabled,
             warnings=warnings,
         )
@@ -168,7 +192,7 @@ class Collector:
                 container.reload()
                 summaries.append(parse_container_detail(container.attrs))
             except Exception as exc:  # noqa: BLE001 - isolate one bad container
-                warnings.append(f"skipped container {(container.id or '?')[:12]}: {exc}")
+                warnings.append(f"skipped container {_resource_hint(container)}: {exc}")
         return summaries
 
     def _collect_networks(
@@ -184,7 +208,7 @@ class Collector:
                 network.reload()
                 summaries.append(parse_network_summary(network.attrs))
             except Exception as exc:  # noqa: BLE001 - isolate one bad network
-                warnings.append(f"skipped network {(network.id or '?')[:12]}: {exc}")
+                warnings.append(f"skipped network {_resource_hint(network)}: {exc}")
         return summaries
 
     def _collect_host_ports(self, warnings: list[str]) -> tuple[bool, list[HostPortEntry]]:

@@ -8,7 +8,7 @@ sandbox (see tests/collector/test_parsing.py vs test_service.py).
 """
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
@@ -42,6 +42,43 @@ _REDACTED_LABEL_VALUE = "[redacted]"
 # there's no stronger static shape to give it than this.
 JSONDict = dict[str, Any]
 
+
+class DockerPayloadError(ValueError):
+    """A Docker Engine response has an unexpected JSON shape.
+
+    Messages deliberately identify only the invalid field, never its value:
+    inspect payloads may contain secrets in labels or environment variables.
+    """
+
+
+def _mapping(value: Any, field: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
+        raise DockerPayloadError(f"Docker field {field} must be an object with string keys")
+    return value
+
+
+def _required_string(attrs: Mapping[str, Any], field: str) -> str:
+    value = attrs.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise DockerPayloadError(f"Docker field {field} must be a non-empty string")
+    return value
+
+
+def _optional_string(attrs: Mapping[str, Any], field: str, *, default: str = "") -> str:
+    value = attrs.get(field, default)
+    if not isinstance(value, str):
+        raise DockerPayloadError(f"Docker field {field} must be a string")
+    return value
+
+
+def _string_list(value: Any, field: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise DockerPayloadError(f"Docker field {field} must be an array of strings")
+    return value
+
+
 # Docker Engine API timestamps are RFC 3339 with 0-9 fractional digits
 # (commonly nanoseconds), e.g. "2026-08-23T22:00:00.123456789Z". stdlib
 # datetime.fromisoformat only accepts 0, 3 or 6 fractional digits, so we
@@ -71,51 +108,67 @@ def parse_docker_timestamp(raw: str) -> datetime:
     return datetime.fromisoformat(f"{base}.{fraction}{offset}")
 
 
-def _redact_labels(labels: JSONDict) -> dict[str, str]:
+def _redact_labels(labels: Mapping[str, Any]) -> dict[str, str]:
     """Keep every label key (useful for filtering/observability) but mask
     the value of any key that looks credential-shaped. See PW-03 above."""
 
+    if not all(isinstance(value, str) for value in labels.values()):
+        raise DockerPayloadError("Docker field Config.Labels must contain string values")
     return {
         key: (_REDACTED_LABEL_VALUE if _SENSITIVE_LABEL_KEY_RE.search(key) else value)
         for key, value in labels.items()
     }
 
 
-def _format_command(config: JSONDict) -> str | None:
+def _format_command(config: Mapping[str, Any]) -> str | None:
     """Entrypoint + Cmd, the same way `docker inspect` shows the effective
     command actually exec'd in the container — Cmd alone is misleading for
     images that rely on an ENTRYPOINT wrapper script."""
 
-    entrypoint = config.get("Entrypoint") or []
-    cmd = config.get("Cmd") or []
+    raw_entrypoint = config.get("Entrypoint")
+    raw_cmd = config.get("Cmd")
+    entrypoint = (
+        [raw_entrypoint]
+        if isinstance(raw_entrypoint, str)
+        else _string_list(raw_entrypoint, "Config.Entrypoint")
+    )
+    cmd = [raw_cmd] if isinstance(raw_cmd, str) else _string_list(raw_cmd, "Config.Cmd")
     parts = [
-        *([entrypoint] if isinstance(entrypoint, str) else entrypoint),
-        *([cmd] if isinstance(cmd, str) else cmd),
+        *entrypoint,
+        *cmd,
     ]
     return " ".join(parts) if parts else None
 
 
-def _extract_env_keys(config: JSONDict) -> list[str]:
+def _extract_env_keys(config: Mapping[str, Any]) -> list[str]:
     """`Config.Env` entries are "KEY=value" — we only ever return the KEY.
     Values are never captured, let alone returned by the API (see
     ContainerDetail.env_redacted's docstring)."""
 
     keys = []
-    for entry in config.get("Env") or []:
+    for entry in _string_list(config.get("Env"), "Config.Env"):
         key, sep, _value = entry.partition("=")
         if sep:
             keys.append(key)
     return sorted(keys)
 
 
-def _format_mounts(attrs: JSONDict) -> list[str]:
+def _format_mounts(attrs: Mapping[str, Any]) -> list[str]:
     """Type + destination only — never the host Source path (PW-03: a bind
     mount's source can reveal host filesystem layout)."""
 
-    formatted = []
-    for mount in attrs.get("Mounts") or []:
-        mount_type = mount.get("Type", "unknown")
+    formatted: list[str] = []
+    mounts = attrs.get("Mounts")
+    if mounts is None:
+        return formatted
+    if not isinstance(mounts, list):
+        raise DockerPayloadError("Docker field Mounts must be an array")
+    for index, raw_mount in enumerate(mounts):
+        mount = _mapping(raw_mount, f"Mounts[{index}]")
+        mount_type = _optional_string(mount, "Type", default="unknown")
         destination = mount.get("Destination")
+        if destination is not None and not isinstance(destination, str):
+            raise DockerPayloadError(f"Docker field Mounts[{index}].Destination must be a string")
         formatted.append(f"{mount_type}:{destination}" if destination else mount_type)
     return formatted
 
@@ -132,50 +185,69 @@ def parse_container_detail(attrs: JSONDict) -> ContainerDetail:
     collector/state.py and api/containers.py.
     """
 
-    state = attrs.get("State") or {}
-    config = attrs.get("Config") or {}
-    network_settings = attrs.get("NetworkSettings") or {}
+    root = _mapping(attrs, "container response")
+    container_id = _required_string(root, "Id")
+    name = _required_string(root, "Name")
+    created = _required_string(root, "Created")
+    state = _mapping(root.get("State"), "State")
+    config = _mapping(root.get("Config"), "Config")
+    network_settings = _mapping(root.get("NetworkSettings"), "NetworkSettings")
+    status = _required_string(state, "Status")
+    image = _optional_string(config, "Image")
 
     health = None
     health_block = state.get("Health")
-    if isinstance(health_block, dict):
-        health = health_block.get("Status")
+    if health_block is not None:
+        health_attrs = _mapping(health_block, "State.Health")
+        health_value = health_attrs.get("Status")
+        if health_value is not None and not isinstance(health_value, str):
+            raise DockerPayloadError("Docker field State.Health.Status must be a string")
+        health = health_value
 
-    networks = sorted((network_settings.get("Networks") or {}).keys())
-    ports = _parse_published_ports(network_settings.get("Ports") or {})
+    networks_map = _mapping(network_settings.get("Networks") or {}, "NetworkSettings.Networks")
+    for network_name, network_attrs in networks_map.items():
+        _mapping(network_attrs, f"NetworkSettings.Networks.{network_name}")
+    networks = sorted(networks_map)
+    ports = _parse_published_ports(
+        _mapping(network_settings.get("Ports") or {}, "NetworkSettings.Ports")
+    )
+    labels = _mapping(config.get("Labels") or {}, "Config.Labels")
 
     return ContainerDetail(
-        id=attrs["Id"][:SHORT_ID_LENGTH],
-        name=attrs["Name"].lstrip("/"),
-        image=config.get("Image", ""),
-        status=ContainerStatus(state.get("Status", "created")),
+        id=container_id[:SHORT_ID_LENGTH],
+        name=name.lstrip("/"),
+        image=image,
+        status=ContainerStatus(status),
         health=health,
-        created_at=parse_docker_timestamp(attrs["Created"]),
+        created_at=parse_docker_timestamp(created),
         networks=networks,
         ports=ports,
-        labels=_redact_labels(config.get("Labels") or {}),
+        labels=_redact_labels(labels),
         command=_format_command(config),
         env_redacted=_extract_env_keys(config),
         mounts=_format_mounts(attrs),
     )
 
 
-def _parse_published_ports(raw_ports: JSONDict) -> list[PublishedPort]:
+def _parse_published_ports(raw_ports: Mapping[str, Any]) -> list[PublishedPort]:
     """`NetworkSettings.Ports` from a container inspect: a map of
     "<container_port>/<protocol>" -> list of host bindings, or None/empty if
     that container port is exposed but never published to the host."""
 
     published: list[PublishedPort] = []
     for key, bindings in raw_ports.items():
-        if not bindings:
+        if bindings is None or bindings == []:
             continue
+        if not isinstance(bindings, list):
+            raise DockerPayloadError(f"Docker port bindings for {key} must be an array or null")
         container_port_text, _, protocol_text = key.partition("/")
         try:
             container_port = int(container_port_text)
             protocol = PortProtocol(protocol_text or "tcp")
         except ValueError:
             continue
-        for binding in bindings:
+        for index, raw_binding in enumerate(bindings):
+            binding = _mapping(raw_binding, f"NetworkSettings.Ports.{key}[{index}]")
             host_port_text = binding.get("HostPort")
             try:
                 host_port = int(host_port_text) if host_port_text else None
@@ -190,11 +262,16 @@ def _parse_published_ports(raw_ports: JSONDict) -> list[PublishedPort]:
                 # `continue` above, which drops the whole port entry
                 # because there's nothing salvageable there).
                 continue
+            host_ip = binding.get("HostIp")
+            if host_ip is not None and not isinstance(host_ip, str):
+                raise DockerPayloadError(
+                    f"Docker field NetworkSettings.Ports.{key}[{index}].HostIp must be a string"
+                )
             published.append(
                 PublishedPort(
                     container_port=container_port,
                     host_port=host_port,
-                    host_ip=binding.get("HostIp") or None,
+                    host_ip=host_ip or None,
                     protocol=protocol,
                 )
             )
@@ -208,16 +285,27 @@ def parse_network_summary(attrs: JSONDict) -> NetworkSummary:
     `Containers` as null; only `GET /networks/{id}` (inspect) populates it,
     same asymmetry as containers — see collector/service.py."""
 
-    containers = sorted(
-        entry.get("Name", container_id)
-        for container_id, entry in (attrs.get("Containers") or {}).items()
-    )
+    root = _mapping(attrs, "network response")
+    network_id = _required_string(root, "Id")
+    name = _required_string(root, "Name")
+    driver = _optional_string(root, "Driver")
+    scope = _optional_string(root, "Scope")
+    containers_map = _mapping(root.get("Containers") or {}, "Containers")
+    containers = []
+    for container_id, raw_entry in containers_map.items():
+        entry = _mapping(raw_entry, f"Containers.{container_id}")
+        container_name = entry.get("Name", container_id)
+        if not isinstance(container_name, str) or not container_name:
+            raise DockerPayloadError(
+                f"Docker field Containers.{container_id}.Name must be a non-empty string"
+            )
+        containers.append(container_name)
     return NetworkSummary(
-        id=attrs["Id"],
-        name=attrs["Name"],
-        driver=attrs.get("Driver", ""),
-        scope=attrs.get("Scope", ""),
-        containers=containers,
+        id=network_id,
+        name=name,
+        driver=driver,
+        scope=scope,
+        containers=sorted(containers),
     )
 
 

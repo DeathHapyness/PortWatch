@@ -84,3 +84,41 @@ async def test_metrics_scrape_request_itself_is_not_double_counted_before_its_ow
     resp = await client.get("/metrics")
 
     assert 'path="/metrics"' not in resp.text
+
+
+async def test_unmatched_paths_share_one_bounded_label(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_settings(monkeypatch, token="")
+
+    await client.get("/not-found/first-arbitrary-value")
+    await client.get("/not-found/second-arbitrary-value")
+    resp = await client.get("/metrics")
+
+    assert "first-arbitrary-value" not in resp.text
+    assert "second-arbitrary-value" not in resp.text
+    assert (
+        'portwatch_http_requests_total{method="GET",path="__unmatched__",status="404"} 2.0'
+        in resp.text
+    )
+
+
+async def test_unhandled_exceptions_are_counted_as_http_500(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_settings(monkeypatch, token="")
+    app = create_app()
+
+    @app.get("/explode")
+    async def explode() -> None:
+        raise RuntimeError("boom")
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        with pytest.raises(RuntimeError, match="boom"):
+            await client.get("/explode")
+        resp = await client.get("/metrics")
+
+    assert (
+        'portwatch_http_requests_total{method="GET",path="/explode",status="500"} 1.0' in resp.text
+    )

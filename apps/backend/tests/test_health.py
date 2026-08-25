@@ -6,6 +6,7 @@ import pytest
 
 from portwatch_backend.app import app
 from portwatch_backend.collector.state import SnapshotStore
+from portwatch_backend.core.config import Settings
 
 
 @pytest.fixture
@@ -30,6 +31,18 @@ def fresh_snapshot_store() -> Iterator[SnapshotStore]:
         yield store
     finally:
         app.state.snapshot_store = original
+
+
+@pytest.fixture
+def fresh_settings() -> Iterator[None]:
+    """Same rationale/pattern as fresh_snapshot_store above, for
+    app.state.settings."""
+
+    original = app.state.settings
+    try:
+        yield
+    finally:
+        app.state.settings = original
 
 
 async def test_health(client: httpx.AsyncClient) -> None:
@@ -70,6 +83,32 @@ async def test_health_ready_with_a_stale_snapshot(
 
     assert resp.status_code == 503
     assert resp.json()["status"] == "not_ready"
+
+
+async def test_health_ready_uses_the_settings_captured_at_startup(
+    client: httpx.AsyncClient,
+    fresh_snapshot_store: SnapshotStore,
+    fresh_settings: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # /health/ready's staleness tolerance must come from app.state.settings
+    # (the exact Settings instance create_app() built the Collector from),
+    # not a fresh get_settings() re-read — the two could disagree if the
+    # environment changed after startup, and health.py no longer imports
+    # get_settings at all as of this fix. A stray reintroduction of
+    # get_settings() here would pick up this monkeypatched, much shorter
+    # poll interval and wrongly call a 5-minutes-old snapshot stale.
+    app.state.settings = Settings(collector_poll_interval_seconds=1000.0)
+    monkeypatch.setattr(
+        "portwatch_backend.core.config.get_settings",
+        lambda: Settings(collector_poll_interval_seconds=0.01),
+    )
+    fresh_snapshot_store.publish(collected_at=datetime.now(UTC) - timedelta(minutes=5))
+
+    resp = await client.get("/health/ready")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
 
 
 async def test_system_summary_matches_contract(client: httpx.AsyncClient) -> None:

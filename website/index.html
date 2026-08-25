@@ -90,6 +90,28 @@
     html:not(.js) .reveal--right,
     html:not(.js) .reveal--zoom { opacity: 1; transform: none; }
 
+    /* Motor vanilla (assets/site.js — sem dependências):
+       o JS garante o estado final adicionando .in/.is-visible e/ou
+       estilos inline; estas transições dão o movimento. Nenhum elemento
+       depende de biblioteca externa para ficar visível. */
+    html.js .h-in { transition: opacity .8s var(--ease); }
+    html.js .h-in.in { opacity: 1; }
+    html.js .terminal-wrap { transition: opacity .95s var(--ease), transform .95s var(--ease); }
+    html.js .terminal-wrap.in { opacity: 1; transform: none; }
+    html.js .reveal,
+    html.js .reveal--left,
+    html.js .reveal--right,
+    html.js .reveal--zoom { transition: opacity .75s var(--ease), transform .75s var(--ease); }
+    html.js .reveal.is-visible,
+    html.js .reveal--left.is-visible,
+    html.js .reveal--right.is-visible,
+    html.js .reveal--zoom.is-visible { opacity: 1; transform: none; }
+
+    /* failsafe: motor tentou mas falhou — tudo visível instantaneamente */
+    html.failsafe .reveal, html.failsafe .reveal--left,
+    html.failsafe .reveal--right, html.failsafe .reveal--zoom,
+    html.failsafe .h-in, html.failsafe .terminal-wrap { transition: none !important; }
+
     /* ---------- Nav ---------- */
     header.nav {
       position: sticky; top: 0; z-index: 50;
@@ -330,9 +352,10 @@
       .pin-stage { height: auto !important; }
       .pin-sticky { position: static; height: auto; overflow: visible; padding: 12px 0; }
     }
+    html:not(.scrub) .pin-sticky { position: static; height: auto; overflow: visible; padding: 12px 0; }
 
     /* ---------- Preview do dashboard ---------- */
-    .pin-stage--dash { height: 380vh; }
+    html.scrub .pin-stage--dash { height: 380vh; }
     .shot-zone { perspective: 1200px; width: 100%; }
     .shot {
       max-width: 900px; margin-inline: auto;
@@ -410,7 +433,7 @@
       font-size: 0.78rem; color: var(--faint);
     }
     .shot-note code { font-family: var(--mono); color: var(--green); }
-    .shot-layer { opacity: 0; transform: translateY(14px); }
+    html.scrub .shot-layer { opacity: 0; transform: translateY(14px); }
     html:not(.js) .shot-layer { opacity: 1; transform: none; }
     @media (max-width: 720px) {
       .shot-body { grid-template-columns: 56px 1fr; }
@@ -423,7 +446,7 @@
     }
 
     /* ---------- Portas ---------- */
-    .pin-stage--ports { height: 300vh; }
+    html.scrub .pin-stage--ports { height: 300vh; }
     .port-stage-inner { width: 100%; max-width: 980px; margin-inline: auto; }
     .port-groups { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
     .port-group { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; background: var(--surface); }
@@ -555,7 +578,7 @@
     @media (max-width: 720px) { .ep-desc { display: none; } }
 
     /* arquitetura */
-    .pin-stage--arch { height: 350vh; }
+    html.scrub .pin-stage--arch { height: 350vh; }
     .arch {
       border: 1px solid var(--border); border-radius: var(--radius);
       background: var(--bg-soft); padding: 40px clamp(16px, 4vw, 48px);
@@ -636,7 +659,9 @@
     .t-flag { color: var(--cyan); }
     .t-comment { color: var(--faint); font-style: italic; }
     .term-checklist { padding: 4px 18px 18px; display: grid; gap: 6px; }
-    .ic-item { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 0.78rem; color: var(--muted); opacity: 0; }
+    .ic-item { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+    html.js .ic-item { opacity: 0; }
+    html:not(.js) .ic-item { opacity: 1; }
     .ic-item svg { flex-shrink: 0; color: var(--green); }
     .ic-item .ic-path { stroke-dasharray: 1; stroke-dashoffset: 1; }
     .req-card {
@@ -774,9 +799,15 @@
       html.js .reveal, html.js .reveal--left, html.js .reveal--right, html.js .reveal--zoom,
       html.js .terminal-wrap, html.js .shot, html.js .bar, html.js .pchip, html.js .node,
       html.js .chip, html.js .hero-graph .hg-node, html.js .hero-graph .hg-ring,
-      html.js .port-node, html.js .netgraph .ng-node, html.js .ng-label, html.js .arch-note {
+      html.js .port-node, html.js .netgraph .ng-node, html.js .ng-label, html.js .arch-note,
+      html.js .shot-layer, html.js .ic-item {
         opacity: 1 !important; transform: none !important;
       }
+      html.js .hero-graph .hg-line, html.js .netgraph .ng-edge, html.js .grow-path,
+      html.js .bd-net path, html.js .bd-heart path, html.js .ic-path {
+        stroke-dashoffset: 0 !important;
+      }
+      html.js .tl-fill { transform: none !important; }
       .pin-stage { height: auto !important; }
       .pin-sticky { position: static !important; height: auto !important; overflow: visible !important; }
       .journey.pinned { height: auto !important; }
@@ -1386,7 +1417,6 @@
     </div>
   </footer>
 
-  <script src="assets/vendor/anime.min.js"></script>
   <script src="assets/site.js"></script>
 </body>
 </html>

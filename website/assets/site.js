@@ -1,177 +1,117 @@
 /*!
- * PortWatch — orquestração de animação (Anime.js v4)
- * Depende de website/assets/vendor/anime.min.js (carregado antes deste
- * script, expõe o global `anime`).
- *
- * Sem esse global (falha de rede/CDN local ausente), o site continua
- * funcional: a folha de estilo só esconde elementos `.reveal*` quando
- * `html.js` está presente, então caímos para "tudo visível" abaixo.
+ * PortWatch — orquestração de animação (vanilla, zero dependências)
+ * Substitui o antigo motor Anime.js; mantém o mesmo visual e marcadores.
+ * Sem nenhuma biblioteca externa: IntersectionObserver + rAF + estilos
+ * inline determinísticos. Garantia: sem JS ou em erro, tudo fica visível
+ * via classe failsafe + fallbacks CSS (html:not(.js)).
  */
 (function () {
   "use strict";
 
   var root = document.documentElement;
-  var reduceMotionMQ = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
-  var reduceMotion = !!(reduceMotionMQ && reduceMotionMQ.matches);
+  var reduceMQ = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  var reduceMotion = !!(reduceMQ && reduceMQ.matches);
+  var mobileMQ = window.matchMedia ? window.matchMedia("(max-width: 860px)") : null;
+  var mobile = !!(mobileMQ && mobileMQ.matches);
 
   function qs(sel, ctx) { return (ctx || document).querySelector(sel); }
   function qsa(sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); }
+  function on(el, ev, fn, opts) { el.addEventListener(ev, fn, opts || false); }
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function seg(p, a, b) { return clamp((p - a) / (b - a || 1), 0, 1); }
+  function ease(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; } /* easeInOutQuad */
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function rand(a, b) { return a + Math.random() * (b - a); }
 
-  /* ---------- Menu mobile (sem relação com animação) ---------- */
+  /* =========================================================
+     Menu mobile
+     ========================================================= */
   (function menu() {
-    var menuBtn = document.getElementById("menuBtn");
-    var navLinks = document.getElementById("navLinks");
-    if (!menuBtn || !navLinks) return;
-    menuBtn.addEventListener("click", function () {
-      var open = navLinks.classList.toggle("open");
-      menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
-      menuBtn.setAttribute("aria-label", open ? "Fechar menu" : "Abrir menu");
+    var btn = document.getElementById("menuBtn");
+    var nav = document.getElementById("navLinks");
+    if (!btn || !nav) return;
+    on(btn, "click", function () {
+      var open = nav.classList.toggle("open");
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      btn.setAttribute("aria-label", open ? "Fechar menu" : "Abrir menu");
     });
-    navLinks.addEventListener("click", function (e) {
+    on(nav, "click", function (e) {
       var a = e.target && e.target.closest && e.target.closest("a");
-      if (a) {
-        navLinks.classList.remove("open");
-        menuBtn.setAttribute("aria-expanded", "false");
-      }
+      if (a) { nav.classList.remove("open"); btn.setAttribute("aria-expanded", "false"); }
     });
   })();
 
-  /* ---------- Nav-spy (destaca o link da seção visível) ---------- */
+  /* =========================================================
+     Nav-spy (IntersectionObserver)
+     ========================================================= */
   (function navSpy() {
-    var navAnchors = qsa("nav.links a");
-    var sections = qsa("main section[id]");
-    if (!("IntersectionObserver" in window) || !sections.length) return;
+    var anchors = qsa("nav.links a");
+    var secs = qsa("main section[id]");
+    if (!("IntersectionObserver" in window) || !secs.length) return;
     var map = {};
-    navAnchors.forEach(function (a) {
-      var href = a.getAttribute("href") || "";
-      if (href.charAt(0) === "#") map[href.slice(1)] = a;
-    });
-    var spy = new IntersectionObserver(function (entries) {
+    anchors.forEach(function (a) { var h = a.getAttribute("href") || ""; if (h.charAt(0) === "#") map[h.slice(1)] = a; });
+    var obs = new IntersectionObserver(function (entries) {
       entries.forEach(function (en) {
         if (!en.isIntersecting) return;
         var link = map[en.target.id];
         if (!link) return;
-        navAnchors.forEach(function (a) { a.classList.remove("active"); });
+        anchors.forEach(function (a) { a.classList.remove("active"); });
         link.classList.add("active");
       });
     }, { rootMargin: "-35% 0px -55% 0px", threshold: 0 });
-    sections.forEach(function (s) { spy.observe(s); });
+    secs.forEach(function (s) { obs.observe(s); });
   })();
 
-  /* ---------- Navbar reage ao scroll (1 listener leve, throttled por rAF) ---------- */
+  /* =========================================================
+     Navbar scrolled
+     ========================================================= */
   (function navScrolled() {
     var nav = qs("header.nav");
     if (!nav) return;
     var ticking = false;
-    function update() {
-      nav.classList.toggle("scrolled", window.scrollY > 24);
-      ticking = false;
-    }
-    window.addEventListener("scroll", function () {
-      if (!ticking) { window.requestAnimationFrame(update); ticking = true; }
-    }, { passive: true });
+    function update() { nav.classList.toggle("scrolled", window.scrollY > 24); ticking = false; }
+    on(window, "scroll", function () { if (!ticking) { window.requestAnimationFrame(update); ticking = true; } }, { passive: true });
     update();
   })();
 
-  /* ---------- Contador dos stats / KPIs (rAF, reaproveitado) ---------- */
+  /* =========================================================
+     Contadores [data-count] / [data-kpi-count]
+     ========================================================= */
   var countedOnce = new WeakSet ? new WeakSet() : null;
   function animateCount(el) {
-    if (countedOnce) {
-      if (countedOnce.has(el)) return;
-      countedOnce.add(el);
-    }
+    if (countedOnce) { if (countedOnce.has(el)) return; countedOnce.add(el); }
     var isKpi = el.hasAttribute("data-kpi-count");
     var target = parseFloat(el.getAttribute("data-count") || el.getAttribute("data-kpi-count")) || 0;
     var from = parseFloat(el.getAttribute("data-from")) || 0;
     var suffix = el.getAttribute("data-suffix") || "";
-    var duration = 1200;
-    var start = null;
-    var textNode = null;
+    var duration = 1200, start = null, textNode = null;
     if (isKpi) {
-      // garante um nó de texto dedicado como primeiro filho, antes do <em>
-      if (!el.firstChild || el.firstChild.nodeType !== Node.TEXT_NODE) {
-        textNode = document.createTextNode(String(Math.round(from)));
-        el.insertBefore(textNode, el.firstChild);
-      } else {
-        textNode = el.firstChild;
-      }
+      if (!el.firstChild || el.firstChild.nodeType !== 3) { textNode = document.createTextNode(String(Math.round(from))); el.insertBefore(textNode, el.firstChild); }
+      else textNode = el.firstChild;
     }
     function step(ts) {
       if (start === null) start = ts;
       var p = Math.min((ts - start) / duration, 1);
-      var eased = 1 - Math.pow(1 - p, 3);
-      var val = Math.round(from + (target - from) * eased);
-      if (isKpi) textNode.nodeValue = String(val);
-      else el.textContent = val + suffix;
+      var e = 1 - Math.pow(1 - p, 3);
+      var val = Math.round(from + (target - from) * e);
+      if (isKpi) textNode.nodeValue = String(val); else el.textContent = val + suffix;
       if (p < 1) window.requestAnimationFrame(step);
     }
     window.requestAnimationFrame(step);
   }
+  function forceCounters() {
+    qsa("[data-count]").forEach(function (el) { el.textContent = (el.getAttribute("data-count") || "0") + (el.getAttribute("data-suffix") || ""); });
+    qsa("[data-kpi-count]").forEach(function (el) {
+      var t = el.getAttribute("data-kpi-count") || "0";
+      var em = el.querySelector("em");
+      el.textContent = t;
+      if (em) el.appendChild(em);
+    });
+  }
 
   /* =========================================================
-     A partir daqui, tudo depende do Anime.js. Sem o global,
-     apenas garantimos que nada fique escondido.
+     Dados dos terminais
      ========================================================= */
-  var anime = window.anime;
-  if (!anime || !anime.animate) {
-    qsa(".reveal, .reveal--left, .reveal--right, .reveal--zoom, .terminal-wrap, .shot, .node, .port-node, .chip, .arch-note")
-      .forEach(function (el) { el.style.opacity = 1; el.style.transform = "none"; });
-    qsa(".pin-stage").forEach(function (el) { el.style.height = "auto"; });
-    qsa(".pin-sticky").forEach(function (el) { el.style.position = "static"; el.style.height = "auto"; });
-    // terminais ainda funcionam com um render estático simples
-    staticTerminals();
-    return;
-  }
-
-  var animate = anime.animate;
-  var createTimeline = anime.createTimeline;
-  var stagger = anime.stagger;
-  var onScroll = anime.onScroll;
-  var createScope = anime.createScope;
-  var svgApi = anime.svg;
-  var utils = anime.utils || { random: function (a, b) { return a + Math.random() * (b - a); } };
-
-  function rand(a, b) { return utils.random(a, b); }
-
-  /* ---------- Amarra uma timeline ao progresso real do scroll ----------
-     `timeline.sync(onScroll({...}))` existe na API, mas nesta versão
-     vendorizada não repintou os tweens ao longo do progresso (o
-     ScrollObserver computava o progresso corretamente — confirmado via
-     onUpdate — porém a timeline ficava presa no estado inicial ou final).
-     `seek()` manual a partir de onUpdate é documentado e comprovadamente
-     confiável, então é o mecanismo usado em todo o site para as seções
-     "pinned"/scrub. Sempre volta ao rolar para cima, pois é o mesmo
-     progresso (0↔1) sendo buscado a cada atualização de scroll. */
-  function scrubTimeline(tl, opts) {
-    tl.pause();
-    var extraUpdate = opts.onUpdate;
-    var merged = Object.assign({}, opts, {
-      onUpdate: function (self) {
-        // Evita buscar exatamente 0 ou a duração total: alguns
-        // observers tratam essas bordas como "fora do intervalo" e
-        // revertem/zeram o render nesse exato frame.
-        var p = Math.min(Math.max(self.progress, 0), 1);
-        tl.seek(Math.min(Math.max(p * tl.duration, 0.001), tl.duration - 0.001));
-        if (extraUpdate) extraUpdate(self);
-      }
-    });
-    return onScroll(merged);
-  }
-
-  /* ---------- Terminais (usados nos dois modos, JS e fallback) ---------- */
-  function staticTerminals() {
-    var termOut = document.getElementById("termOut");
-    var installTerm = document.getElementById("installTerm");
-    if (termOut) termOut.innerHTML = heroLinesHTML();
-    if (installTerm) installTerm.innerHTML = installLinesHTML();
-  }
-  function heroLinesHTML() {
-    return HERO_LINES.map(function (l) { return '<div class="' + l.cls + '">' + l.html + "</div>"; }).join("");
-  }
-  function installLinesHTML() {
-    return INSTALL_LINES.map(function (l) { return '<div class="' + l.cls + '">' + l.html + "</div>"; }).join("");
-  }
-
   var HERO_LINES = [
     { cls: "t-line t-cmd", html: '<span class="p">➜</span> curl <span class="flag">http://localhost:8000</span>/api/v1/system/summary | jq' },
     { cls: "t-line", html: '<span class="j-punc">{</span>' },
@@ -198,25 +138,39 @@
     { cls: "tr", html: '<span class="cursor"></span>' }
   ];
 
-  /* makeTerminal: linhas aparecem rápido, em cascata (stagger), sem
-     digitação lenta — motor trocado de setTimeout+classe para animate(). */
+  function renderTerminalHTML(lines) {
+    return lines.map(function (l) { return '<div class="' + l.cls + '">' + l.html + "</div>"; }).join("");
+  }
+  function staticTerminals() {
+    var out = document.getElementById("termOut");
+    var ins = document.getElementById("installTerm");
+    if (out) out.innerHTML = renderTerminalHTML(HERO_LINES);
+    if (ins) ins.innerHTML = renderTerminalHTML(INSTALL_LINES);
+  }
+
+  /* =========================================================
+     makeTerminal — terminais com loop (rAF + setTimeout tracked)
+     ========================================================= */
   function makeTerminal(container, lines, opts) {
     if (!container) return { play: function () {}, stop: function () {} };
     opts = opts || {};
     var lineDelay = opts.lineDelay || 65;
     var holdTime = opts.holdTime || 2800;
-    var onDone = opts.onDone;
-    var loopTimer = null;
+    var onDone = opts.onDone || null;
+    var timers = [];
     var playing = false;
+
+    function clearTimers() { timers.forEach(function (t) { window.clearTimeout(t); }); timers = []; }
+    function track(ms, fn) { var id = window.setTimeout(fn, ms); timers.push(id); return id; }
 
     function render() {
       container.innerHTML = "";
       var frag = document.createDocumentFragment();
       lines.forEach(function (ln) {
-        var div = document.createElement("div");
-        div.className = ln.cls || "";
-        div.innerHTML = ln.html;
-        frag.appendChild(div);
+        var d = document.createElement("div");
+        d.className = ln.cls || "";
+        d.innerHTML = ln.html;
+        frag.appendChild(d);
       });
       container.appendChild(frag);
       return qsa(":scope > *", container);
@@ -224,526 +178,819 @@
 
     function cycle() {
       var els = render();
-      animate(els, {
-        opacity: [0, 1],
-        translateY: [4, 0],
-        duration: 220,
-        ease: "outQuad",
-        delay: stagger(lineDelay)
+      els.forEach(function (el, i) {
+        el.style.opacity = "0";
+        el.style.transform = "translateY(4px)";
+        el.style.transition = "opacity .22s ease, transform .22s ease";
+        track(lineDelay * i + 30, function () {
+          el.style.opacity = "1";
+          el.style.transform = "none";
+        });
       });
       var totalMs = lineDelay * els.length + 260;
-      if (onDone) loopTimer = window.setTimeout(onDone, totalMs);
-      loopTimer = window.setTimeout(function () {
-        if (playing) cycle();
-      }, totalMs + holdTime);
+      if (onDone) track(totalMs, onDone);
+      track(totalMs + holdTime, function () { if (playing) cycle(); });
     }
 
-    function play() {
-      if (playing) return;
-      playing = true;
-      cycle();
-    }
-    function stop() {
-      playing = false;
-      if (loopTimer) { window.clearTimeout(loopTimer); loopTimer = null; }
-    }
+    function play() { if (playing) return; playing = true; cycle(); }
+    function stop() { playing = false; clearTimers(); }
 
     if (reduceMotion) { render(); return { play: function () {}, stop: function () {} }; }
     return { play: play, stop: stop };
   }
 
-  /* ---------- Escopo principal: media queries decidem o nível de movimento ---------- */
-  createScope({
-    mediaQueries: {
-      reduce: "(prefers-reduced-motion: reduce)",
-      mobile: "(max-width: 860px)"
-    }
-  }).add(function (self) {
-    var m = self.matches;
-    var reduce = !!m.reduce;
-    var mobile = !!m.mobile;
+  /* =========================================================
+     Motor de scroll: rAF compartilhado + registro de seções
+     ========================================================= */
+  var scrubSections = [];
+  var scrollTicking = false;
 
-    setupInstall(reduce, mobile);
-    wireReveal();
-    setupHero(reduce, mobile);
-    setupJourney(reduce, mobile);
-    setupDashboard(reduce, mobile);
-    setupPorts(reduce, mobile);
-    setupNetworks(reduce, mobile);
-    setupFeatureBeats(reduce, mobile);
-    setupArchitecture(reduce, mobile);
-    setupRoadmap(reduce, mobile);
+  function registerScrub(updateFn) { scrubSections.push(updateFn); }
 
-    var heroTerm = makeTerminal(document.getElementById("termOut"), HERO_LINES, { lineDelay: 55, holdTime: 3400 });
-    if (!reduce) {
-      // O terminal do hero já está visível ao carregar a página (não há uma
-      // transição "de fora para dentro" para o onScroll detectar), então
-      // disparamos o primeiro ciclo diretamente, junto com a cascata de
-      // entrada; onScroll só cuida de pausar/retomar ao sair/voltar dele.
-      window.setTimeout(heroTerm.play, 500);
-      onScroll({ target: "#termOut", enter: "top bottom", leave: "bottom top", onLeave: heroTerm.stop, onEnterBackward: heroTerm.play });
-    } else {
-      staticTerminals();
+  on(window, "scroll", function () {
+    if (scrubSections.length && !scrollTicking) {
+      window.requestAnimationFrame(tickScroll);
+      scrollTicking = true;
     }
+  }, { passive: true });
 
-    /* contadores: stats sempre; kpis do dashboard disparam no marco final do pin */
-    if (!reduce) {
-      qsa("[data-count]").forEach(function (el) {
-        onScroll({ target: el, enter: "top bottom", leave: "bottom top", onEnter: function () { animateCount(el); } });
-      });
-    } else {
-      qsa("[data-count]").forEach(function (el) { el.textContent = (el.getAttribute("data-count") || "0") + (el.getAttribute("data-suffix") || ""); });
-    }
-  });
+  function tickScroll() {
+    scrollTicking = false;
+    var vh = window.innerHeight;
+    scrubSections.forEach(function (fn) {
+      try { fn(vh); } catch (e) { /* ignora erros isolados de seção */ }
+    });
+  }
 
   /* =========================================================
-     Reveal genérico — replica o antigo [data-animate]:
-     cada elemento observa a si mesmo, delay lido de --d.
+     Helpers de reveal — IO + helpers de estilos inline
      ========================================================= */
-  function wireReveal() {
-    qsa(".reveal, .reveal--left, .reveal--right, .reveal--zoom").forEach(function (el) {
-      if (el.dataset.revealWired) return;
-      el.dataset.revealWired = "1";
-      var d = parseFloat(getComputedStyle(el).getPropertyValue("--d")) || 0;
-      var props = { opacity: [0, 1], duration: 750, ease: "outCubic", delay: d };
-      if (el.classList.contains("reveal--left")) props.translateX = [-28, 0];
-      else if (el.classList.contains("reveal--right")) props.translateX = [28, 0];
-      else if (el.classList.contains("reveal--zoom")) { props.scale = [0.94, 1]; props.translateY = [10, 0]; }
-      else props.translateY = [22, 0];
-      onScroll({
-        target: el,
-        enter: "top bottom",
-        leave: "bottom top",
-        onEnter: function () { el.classList.add("is-visible"); animate(el, props); }
-      });
+  function showEl(el, opts) {
+    opts = opts || {};
+    var d = opts.delay || parseFloat(getComputedStyle(el).getPropertyValue("--d")) || 0;
+    var propStr = "opacity " + (opts.dur || 750) + "ms " + (opts.ease || "var(--ease)") + " " + d + "ms, transform " + (opts.dur || 750) + "ms " + (opts.ease || "var(--ease)") + " " + d + "ms";
+    el.style.transition = propStr;
+    el.style.opacity = "1";
+    el.style.transform = "none";
+    el.classList.add("is-visible");
+  }
+
+  function applyInitial(el, opacity, transform) {
+    el.style.opacity = String(opacity);
+    if (transform !== undefined) el.style.transform = transform;
+    el.style.transition = "none";
+  }
+
+  function drawPath(pathEl, progress) {
+    pathEl.style.transition = "none";
+    pathEl.style.strokeDashoffset = String(1 - progress);
+  }
+
+  function showSeq(items, baseDelay, stagger) {
+    items.forEach(function (el, i) {
+      if (!el) return;
+      showEl(el, { delay: baseDelay + i * stagger });
     });
+  }
+
+  /* =========================================================
+     Classe Scrub — aplica estados iniciais antes do primeiro paint
+     ========================================================= */
+  var canScrub = !reduceMotion && !mobile && ("IntersectionObserver" in window);
+  try {
+    if (canScrub) root.classList.add("scrub");
+  } catch (e) { canScrub = false; }
+
+  /* =========================================================
+     IO reveal genérico — .reveal*, .chip (dentro de reqChips),
+     .person, .stack-card, .sec-card, .tl-item (via setupRoadmap)
+     ========================================================= */
+  var ioRevealObs = null;
+  function setupIOReveal() {
+    ioRevealObs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        ioRevealObs.unobserve(en.target);
+        showEl(en.target);
+      });
+    }, { threshold: 0.12 });
+    qsa(".reveal, .reveal--left, .reveal--right, .reveal--zoom").forEach(function (el) { ioRevealObs.observe(el); });
   }
 
   /* =========================================================
      1 — Hero
      ========================================================= */
-  function setupHero(reduce, mobile) {
+  function setupHero() {
     var hero = qs(".hero");
     if (!hero) return;
+    var badge = qs(".badge.h-in");
+    var title = qs("#heroTitle");
+    var lead = qs(".lead.h-in");
+    var cta = qs(".cta-row.h-in");
+    var termWrap = qs(".terminal-wrap");
 
-    var loadTargets = {
-      badge: qs(".badge.h-in"),
-      title: qs("#heroTitle"),
-      lead: qs(".lead.h-in"),
-      cta: qs(".cta-row.h-in"),
-      term: qs(".terminal-wrap")
-    };
-    var loadTl = createTimeline({ defaults: { ease: "outCubic" } });
-    if (loadTargets.badge) loadTl.add(loadTargets.badge, { opacity: [0, 1], translateY: [24, 0], duration: 650 }, 0);
-    if (loadTargets.title) loadTl.add(loadTargets.title, { opacity: [0, 1], translateY: [26, 0], duration: 800 }, 120);
-    if (loadTargets.lead) loadTl.add(loadTargets.lead, { opacity: [0, 1], translateY: [22, 0], duration: 700 }, 260);
-    if (loadTargets.cta) loadTl.add(loadTargets.cta, { opacity: [0, 1], translateY: [20, 0], duration: 650 }, 400);
-    if (loadTargets.term) loadTl.add(loadTargets.term, { opacity: [0, 1], translateY: [30, 0], scale: [0.95, 1], rotateX: [6, 0], duration: 950 }, 320);
+    /* estados iniciais para elementos .h-in (opacity 0 no CSS) */
+    [badge, title, lead, cta].forEach(function (el) { if (el) { el.style.opacity = "0"; el.style.transform = "translateY(22px)"; el.style.transition = "none"; } });
+    if (termWrap) { termWrap.style.opacity = "0"; termWrap.style.transform = "translateY(30px) scale(.95) rotateX(6deg)"; termWrap.style.transformOrigin = "bottom center"; termWrap.style.transition = "none"; }
 
-    if (reduce || mobile) return;
+    /* cascata de entrada (load cascade) */
+    track(100, function () { if (badge) { badge.classList.add("in"); showEl(badge); } });
+    track(220, function () { if (title) { title.classList.add("in"); showEl(title); } });
+    track(360, function () { if (lead) { lead.classList.add("in"); showEl(lead); } });
+    track(500, function () { if (cta) { cta.classList.add("in"); showEl(cta); } });
+    track(420, function () { if (termWrap) { termWrap.classList.add("in"); showEl(termWrap, { dur: 950 }); } });
 
-    var lines = qsa(".hg-line", hero);
-    var nodes = qsa(".hg-node", hero);
-    var rings = qsa(".hg-ring", hero);
-    var drawables = lines.length && svgApi ? svgApi.createDrawable(lines) : null;
+    if (!canScrub) return;
 
-    var scrollTl = createTimeline({ defaults: { ease: "linear" } });
-    scrollTl.add(nodes, { opacity: [0, 1], scale: [0.4, 1], delay: stagger(70) }, 0);
-    scrollTl.add(rings, { opacity: [0, 0.35], scale: [0.4, 1], delay: stagger(70) }, 0);
-    if (drawables) scrollTl.add(drawables, { draw: ["0 0", "0 1"], delay: stagger(110) }, 200);
-    if (loadTargets.title) scrollTl.add(loadTargets.title, { translateY: [0, -18], scale: [1, 0.97], opacity: [1, 0.72] }, 0);
-    if (loadTargets.term) scrollTl.add(loadTargets.term, { translateY: [0, -12], scale: [1, 1.015] }, 0);
-    var backdropAfter = qs(".backdrop");
-    if (backdropAfter) scrollTl.add(backdropAfter, { translateY: [0, 24] }, 0);
+    /* estados iniciais para elementos do grafo hero (ocultos por html.js) */
+    var hgNodes = qsa(".hg-node", hero);
+    var hgRings = qsa(".hg-ring", hero);
+    var hgLines = qsa(".hg-line", hero);
+    hgNodes.concat(hgRings).forEach(function (el) { applyInitial(el, 0, "scale(.4)"); });
+    hgLines.forEach(function (el) { applyInitial(el, undefined); el.style.strokeDashoffset = "1"; el.style.strokeDasharray = "1"; });
 
-    scrubTimeline(scrollTl, { target: hero, container: null, enter: "top top", leave: "bottom top" });
+    /* parallax / garnish while hero scrolls out */
+    registerScrub(function (vh) {
+      var rect = hero.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > vh) return;
+      var hp = clamp(1 - (rect.bottom / (rect.height + vh * 0.3)), 0, 1);
+      var easeHp = ease(hp);
+      /* graph reveal: first 55% of scroll-out */
+      var gp = ease(clamp(hp * 1.8, 0, 1));
+      hgNodes.forEach(function (el, i) {
+        var staggered = ease(clamp((gp - i * 0.055), 0, 1));
+        el.style.opacity = String(staggered);
+        el.style.transform = "scale(" + lerp(0.4, 1, staggered) + ")";
+      });
+      hgRings.forEach(function (el, i) {
+        var s = ease(clamp((gp - i * 0.055), 0, 1));
+        el.style.opacity = String(s * 0.35);
+        el.style.transform = "scale(" + lerp(0.4, 1, s) + ")";
+      });
+      hgLines.forEach(function (el, i) {
+        var lp = ease(clamp((gp - 0.18 - i * 0.065), 0, 1));
+        el.style.strokeDashoffset = String(1 - lp);
+      });
+      /* title parallax + fade */
+      if (title) { title.style.transform = "translateY(" + (-18 * easeHp) + "px) scale(" + lerp(1, 0.97, easeHp) + ")"; title.style.opacity = String(lerp(1, 0.72, easeHp)); }
+      /* term parallax */
+      if (termWrap) { termWrap.style.transform = "translateY(" + (-12 * easeHp) + "px) scale(" + lerp(1, 1.015, easeHp) + ")"; }
+      /* backdrop */
+      var bd = qs(".backdrop");
+      if (bd) bd.style.transform = "translateY(" + (24 * easeHp) + "px)";
+    });
   }
 
   /* =========================================================
-     2 — Jornada (Servidor → Docker → Containers → Ports → PortWatch)
+     2 — Jornada
      ========================================================= */
-  function setupJourney(reduce, mobile) {
+  var journeyRandoms = null;
+  function setupJourney() {
     var section = qs(".journey");
     var words = qsa(".j-word", section);
     if (!section || !words.length) return;
 
-    if (reduce || mobile) {
+    if (reduceMotion || mobile) {
       words.forEach(function (w) {
-        onScroll({
-          target: w, enter: "top bottom", leave: "bottom top",
-          onEnter: function () { animate(w, { opacity: [0, 1], translateY: [16, 0], duration: 550, delay: 0, ease: "outCubic" }); }
-        });
+        var io = new IntersectionObserver(function (ents) {
+          if (!ents[0].isIntersecting) return; io.unobserve(w);
+          w.style.transition = "opacity .55s var(--ease), transform .55s var(--ease)";
+          w.style.opacity = "1"; w.style.transform = "none";
+        }, { threshold: 0.2 });
+        io.observe(w);
       });
       return;
     }
 
     section.classList.add("pinned");
-    var tl = createTimeline({ defaults: { ease: "outCubic" } });
-    // Valores de espalhamento pré-calculados (números concretos, não
-    // funções) — uma timeline sincronizada ao scroll pode ser "buscada"
-    // (seek) para qualquer progresso a qualquer momento, então cada tween
-    // precisa de um from/to já resolvido.
+    /* precompute random offsets (fixed per load) */
+    if (!journeyRandoms) {
+      journeyRandoms = words.map(function () {
+        return { rx: rand(-220, 220), ry: rand(-140, 140), rot: rand(-14, 14) };
+      });
+    }
+    /* initial states: words scattered, nearly invisible */
     words.forEach(function (w, i) {
-      tl.add(w, {
-        translateX: [rand(-220, 220), 0],
-        translateY: [rand(-140, 140), 0],
-        rotate: [rand(-14, 14), 0],
-        opacity: [0.15, 1],
-        duration: 700
-      }, i * 180);
+      var r = journeyRandoms[i];
+      w.style.transition = "none";
+      w.style.opacity = "0.15";
+      w.style.transform = "translate(" + r.rx + "px," + r.ry + "px) rotate(" + r.rot + "deg)";
     });
-    tl.add(".j-final", { scale: [1, 1.12, 1], duration: 500 }, words.length * 180 + 350);
+    var jFinal = qs(".j-final", section);
+    if (jFinal) { jFinal.style.transform = "scale(1)"; jFinal.style.transition = "none"; }
 
-    scrubTimeline(tl, { target: section, container: null, enter: "top top", leave: "bottom bottom" });
+    registerScrub(function (vh) {
+      var rect = section.getBoundingClientRect();
+      var dist = section.offsetHeight - vh;
+      if (dist <= 0) return;
+      var p = clamp(-rect.top / dist, 0, 1);
+      var totalDuration = words.length * 180 + 850;
+      words.forEach(function (w, i) {
+        var wp = clamp((p * totalDuration - i * 180) / 700, 0, 1);
+        var e = ease(wp);
+        var r = journeyRandoms[i];
+        w.style.opacity = String(lerp(0.15, 1, e));
+        w.style.transform = "translate(" + (r.rx * (1 - e)) + "px," + (r.ry * (1 - e)) + "px) rotate(" + (r.rot * (1 - e)) + "deg)";
+      });
+      /* j-final pop at end */
+      if (jFinal) {
+        var fp = clamp((p * totalDuration - words.length * 180 - 100) / 600, 0, 1);
+        var fe = ease(fp);
+        var sc = fp < 0.5 ? lerp(1, 1.12, fe * 2) : lerp(1.12, 1, (fe - 0.5) * 2);
+        jFinal.style.transform = "scale(" + sc + ")";
+        jFinal.style.opacity = String(lerp(0.15, 1, fe));
+      }
+    });
   }
 
   /* =========================================================
-     3 — Dashboard (Preview) — pin-stage, construído em 5 marcos
+     3 — Dashboard (pin-stage)
      ========================================================= */
-  function setupDashboard(reduce, mobile) {
+  function setupDashboard() {
     var pin = document.getElementById("dashPin");
     var shot = document.getElementById("dashShot");
     if (!pin || !shot) return;
-
     var bar = qs(".shot-bar", shot);
     var side = qs(".sl-side", shot);
     var kpis = qsa(".kpi", shot);
     var panels = qsa(".sl-panel", shot);
     var bars = qsa(".bar", shot);
     var chips = qsa(".pchip", shot);
+    var legend = qs(".legend", shot);
     var kpiNumbers = qsa("[data-kpi-count]", shot);
+    var allLayers = [bar, side].concat(kpis).concat(panels).concat([legend]).filter(Boolean);
 
-    if (reduce || mobile) {
-      var oneShot = createTimeline({ defaults: { ease: "outCubic" } })
-        .add(shot, { opacity: [0, 1], scale: [0.96, 1], duration: 500 }, 0)
-        .add(side, { opacity: [0, 1], translateX: [-16, 0], duration: 450 }, 100)
-        .add(kpis, { opacity: [0, 1], translateY: [10, 0], delay: stagger(60), duration: 400 }, 180)
-        .add(panels, { opacity: [0, 1], translateY: [12, 0], delay: stagger(90), duration: 450 }, 260)
-        .add(bars, { scaleY: [0, 1], delay: stagger(30), duration: 400 }, 400)
-        .add(chips, { opacity: [0, 1], scale: [0.9, 1], delay: stagger(25), duration: 350 }, 500);
-      onScroll({
-        target: pin, enter: "top bottom", leave: "bottom top",
-        onEnter: function () { oneShot.play(); kpiNumbers.forEach(animateCount); }
-      });
+    if (reduceMotion || mobile) {
+      /* one-shot reveal */
+      var timerBase = 0;
+      var seq = [shot, side].concat(kpis).concat(panels).concat(chips).concat([legend]).filter(Boolean);
+      var io = new IntersectionObserver(function (ents) {
+        if (!ents[0].isIntersecting) return; io.unobserve(pin);
+        seq.forEach(function (el, i) {
+          track(80 * i, function () {
+            el.style.transition = "opacity .45s var(--ease), transform .45s var(--ease)";
+            el.style.opacity = "1"; el.style.transform = "none";
+          });
+        });
+        bars.forEach(function (b, i) {
+          track(350 + i * 28, function () {
+            b.style.transition = "transform .4s var(--ease)";
+            b.style.transform = "scaleY(1)";
+          });
+        });
+        track(600, function () { kpiNumbers.forEach(animateCount); });
+      }, { threshold: 0.15 });
+      io.observe(pin);
       return;
     }
 
-    var tl = createTimeline({ defaults: { ease: "outCubic" } });
-    // 0–20%: moldura
-    tl.add(shot, { opacity: [0, 1], scale: [0.92, 1], rotateX: [8, 0], translateY: [20, 0] }, 0);
-    if (bar) tl.add(bar, { opacity: [0, 1], translateY: [-6, 0] }, 100);
-    // 20–40%: barra lateral
-    tl.add(side, { opacity: [0, 1], translateX: [-18, 0] }, 1000);
-    // 40–60%: containers / kpis
-    tl.add(kpis, { opacity: [0, 1], translateY: [12, 0], delay: stagger(70) }, 2000);
-    // 60–80%: portas preenchem
-    tl.add(panels, { opacity: [0, 1], translateY: [12, 0], delay: stagger(120) }, 3000);
-    tl.add(bars, { scaleY: [0, 1], delay: stagger(35) }, 3050);
-    tl.add(chips, { opacity: [0, 1], scale: [0.9, 1], translateY: [6, 0], delay: stagger(28) }, 3300);
-    // 80–100%: legenda + kpis finais
-    tl.add(qs(".legend", shot), { opacity: [0, 1], duration: 700 }, 4200);
-
+    /* scrub: initial states */
+    applyInitial(shot, 0, "scale(.92) rotateX(8deg) translateY(20px)");
+    if (bar) applyInitial(bar, 0, "translateY(-6px)");
+    applyInitial(side, 0, "translateX(-18px)");
+    kpis.forEach(function (el) { applyInitial(el, 0, "translateY(12px)"); });
+    panels.forEach(function (el) { applyInitial(el, 0, "translateY(12px)"); });
+    bars.forEach(function (b) { b.style.transform = "scaleY(0)"; b.style.transformOrigin = "bottom"; b.style.transition = "none"; });
+    chips.forEach(function (c) { applyInitial(c, 0, "scale(.9) translateY(6px)"); });
+    if (legend) applyInitial(legend, 0);
     var kpiTriggered = false;
-    scrubTimeline(tl, {
-      target: pin, container: null, enter: "top top", leave: "bottom bottom",
-      onUpdate: function (self2) {
-        if (!kpiTriggered && self2.progress >= 0.8) {
-          kpiTriggered = true;
-          kpiNumbers.forEach(animateCount);
-        } else if (kpiTriggered && self2.progress < 0.75) {
-          kpiTriggered = false;
-        }
-      }
+
+    registerScrub(function (vh) {
+      var rect = pin.getBoundingClientRect();
+      var dist = pin.offsetHeight - vh;
+      if (dist <= 0) return;
+      var p = clamp(-rect.top / dist, 0, 1);
+
+      function a(from, to) { return ease(seg(p, from, to)); }
+
+      shot.style.opacity = String(a(0, 0.18));
+      shot.style.transform = "scale(" + lerp(0.92, 1, a(0, 0.18)) + ") rotateX(" + lerp(8, 0, a(0, 0.18)) + "deg) translateY(" + lerp(20, 0, a(0, 0.18)) + "px)";
+
+      if (bar) { bar.style.opacity = String(a(0.06, 0.2)); bar.style.transform = "translateY(" + lerp(-6, 0, a(0.06, 0.2)) + "px)"; }
+
+      side.style.opacity = String(a(0.2, 0.38));
+      side.style.transform = "translateX(" + lerp(-18, 0, a(0.2, 0.38)) + "px)";
+
+      kpis.forEach(function (el) { el.style.opacity = String(a(0.38, 0.56)); el.style.transform = "translateY(" + lerp(12, 0, a(0.38, 0.56)) + "px)"; });
+
+      panels.forEach(function (el) { el.style.opacity = String(a(0.54, 0.72)); el.style.transform = "translateY(" + lerp(12, 0, a(0.54, 0.72)) + "px)"; });
+
+      bars.forEach(function (b, i) {
+        var idx = parseInt(b.style.getPropertyValue("--i"), 10) || i;
+        b.style.transform = "scaleY(" + ease(seg(p, 0.58 + idx * 0.012, 0.78 + idx * 0.012)) + ")";
+      });
+
+      chips.forEach(function (c, i) {
+        var idx = parseInt(c.style.getPropertyValue("--i"), 10) || i;
+        var cp = ease(seg(p, 0.66 + idx * 0.018, 0.84 + idx * 0.018));
+        c.style.opacity = String(cp);
+        c.style.transform = "scale(" + lerp(0.9, 1, cp) + ") translateY(" + lerp(6, 0, cp) + "px)";
+      });
+
+      if (legend) legend.style.opacity = String(a(0.82, 0.95));
+
+      if (!kpiTriggered && p >= 0.8) { kpiTriggered = true; kpiNumbers.forEach(animateCount); }
+      else if (kpiTriggered && p < 0.75) { kpiTriggered = false; }
     });
   }
 
   /* =========================================================
-     4 — Portas — pin-stage, agrupamento por estado
+     4 — Portas (pin-stage)
      ========================================================= */
-  function setupPorts(reduce, mobile) {
+  var portsRandoms = null;
+  function setupPorts() {
     var pin = document.getElementById("portsPin");
     var groups = document.getElementById("portGroups");
     if (!pin || !groups) return;
-
     var published = qsa(".g-published .port-node", groups);
     var occupied = qsa(".g-occupied .port-node", groups);
     var available = qsa(".g-available .port-node", groups);
     var legend = qs(".port-legend", pin);
+    var allScattered = published.concat(occupied);
 
-    if (reduce || mobile) {
-      var oneShot = createTimeline({ defaults: { ease: "outCubic" } })
-        .add(published, { opacity: [0, 1], translateY: [10, 0], delay: stagger(50) }, 0)
-        .add(occupied, { opacity: [0, 1], translateY: [10, 0], delay: stagger(50) }, 120)
-        .add(available, { opacity: [0, 1], translateY: [10, 0], delay: stagger(50) }, 240)
-        .add(legend, { opacity: [0, 1] }, 500);
-      onScroll({ target: pin, enter: "top bottom", leave: "bottom top", onEnter: function () { oneShot.play(); } });
+    if (reduceMotion || mobile) {
+      var seq = allScattered.concat(available).concat([legend]).filter(Boolean);
+      var io = new IntersectionObserver(function (ents) {
+        if (!ents[0].isIntersecting) return; io.unobserve(pin);
+        seq.forEach(function (el, i) {
+          track(50 * i, function () {
+            el.style.transition = "opacity .4s var(--ease), transform .4s var(--ease)";
+            el.style.opacity = "1"; el.style.transform = "none";
+          });
+        });
+      }, { threshold: 0.15 });
+      io.observe(pin);
       return;
     }
 
-    var tl = createTimeline({ defaults: { ease: "outCubic" } });
-    var scattered = published.concat(occupied);
-    // Números concretos pré-calculados por nó (ver nota em setupJourney
-    // sobre por que uma timeline com sync:true não pode depender de
-    // valores resolvidos por função).
-    scattered.forEach(function (node, i) {
-      tl.add(node, {
-        translateX: [rand(-160, 160), 0],
-        translateY: [rand(-90, 90), 0],
-        opacity: [0, 1],
-        scale: [0.75, 1],
-        duration: 500
-      }, i * 22);
+    if (!portsRandoms) {
+      portsRandoms = {
+        scattered: allScattered.map(function () { return { rx: rand(-160, 160), ry: rand(-90, 90) }; }),
+        avail: available.map(function () { return { rx: rand(-200, 200), ry: rand(-60, 60) }; })
+      };
+    }
+    /* initial states */
+    allScattered.forEach(function (el, i) {
+      var r = portsRandoms.scattered[i];
+      el.style.transition = "none";
+      el.style.opacity = "0";
+      el.style.transform = "translate(" + r.rx + "px," + r.ry + "px) scale(.75)";
     });
-    tl.add(published, { scale: [1, 1.08, 1], duration: 400, delay: stagger(20) }, 1300);
-    available.forEach(function (node, i) {
-      tl.add(node, {
-        translateX: [rand(-200, 200), 0],
-        translateY: [rand(-60, 60), 0],
-        opacity: [0, 1],
-        scale: [0.75, 1],
-        duration: 500
-      }, 1800 + i * 24);
+    available.forEach(function (el, i) {
+      var r = portsRandoms.avail[i];
+      el.style.transition = "none";
+      el.style.opacity = "0";
+      el.style.transform = "translate(" + r.rx + "px," + r.ry + "px) scale(.75)";
     });
-    tl.add(legend, { opacity: [0, 1] }, 3200);
+    if (legend) applyInitial(legend, 0);
+    var publishedPulsed = false;
 
-    scrubTimeline(tl, { target: pin, container: null, enter: "top top", leave: "bottom bottom" });
+    registerScrub(function (vh) {
+      var rect = pin.getBoundingClientRect();
+      var dist = pin.offsetHeight - vh;
+      if (dist <= 0) return;
+      var p = clamp(-rect.top / dist, 0, 1);
+
+      /* scattered fly-in [0, 0.45] */
+      allScattered.forEach(function (el, i) {
+        var ip = ease(seg(p, i * 22 / 4000, 0.45));
+        var r = portsRandoms.scattered[i];
+        el.style.opacity = String(ip);
+        el.style.transform = "translate(" + (r.rx * (1 - ip)) + "px," + (r.ry * (1 - ip)) + "px) scale(" + lerp(0.75, 1, ip) + ")";
+      });
+
+      /* published pulse [0.45, 0.55] */
+      var pp = ease(seg(p, 0.45, 0.55));
+      published.forEach(function (el) { el.style.transform = "scale(" + lerp(1, 1.08, pp < 0.5 ? pp * 2 : (1 - pp) * 2) + ")"; });
+
+      /* available fly-in [0.5, 0.85] */
+      available.forEach(function (el, i) {
+        var ap = ease(seg(p, 0.5 + i * 24 / 3500, 0.85));
+        var r = portsRandoms.avail[i];
+        el.style.opacity = String(ap);
+        el.style.transform = "translate(" + (r.rx * (1 - ap)) + "px," + (r.ry * (1 - ap)) + "px) scale(" + lerp(0.75, 1, ap) + ")";
+      });
+
+      if (legend) legend.style.opacity = String(ease(seg(p, 0.86, 0.96)));
+    });
   }
 
   /* =========================================================
-     5 — Redes Docker — grafo SVG
+     5 — Redes Docker (SVG graph)
      ========================================================= */
-  function setupNetworks(reduce, mobile) {
+  function setupNetworks() {
     var svgEl = document.getElementById("netGraph");
-    if (!svgEl) return;
     var wrap = qs(".netgraph-wrap");
+    if (!svgEl) return;
     var containerNodes = qsa("rect.ng-node:not(.hub)", svgEl);
     var hubNodes = qsa("rect.ng-node.hub", svgEl);
-    var dashNode = containerNodes.length ? null : null;
     var edges = qsa(".ng-edge", svgEl);
-    var pulses = qsa(".ng-pulse", svgEl);
     var labels = qsa(".ng-label");
+    var pulses = qsa(".ng-pulse", svgEl);
 
-    var drawables = edges.length && svgApi ? svgApi.createDrawable(edges) : null;
+    /* initial states (hidden by html.js) */
+    containerNodes.concat(hubNodes).forEach(function (el) { applyInitial(el, 0, "scale(.5)"); });
+    edges.forEach(function (el) { applyInitial(el); el.style.strokeDashoffset = "1"; el.style.strokeDasharray = "1"; });
+    labels.forEach(function (el) { applyInitial(el, 0); });
+    pulses.forEach(function (el) { applyInitial(el, 0); });
 
-    var tl = createTimeline({ defaults: { ease: "outCubic" } });
-    tl.add(containerNodes, { opacity: [0, 1], scale: [0.5, 1], delay: stagger(90) }, 0);
-    tl.add(hubNodes, { opacity: [0, 1], scale: [0.5, 1], delay: stagger(90) }, 260);
-    tl.add(labels, { opacity: [0, 1], delay: stagger(60) }, 200);
-    if (drawables) tl.add(drawables, { draw: ["0 0", "0 1"], delay: stagger(110), ease: "inOutQuad" }, 420);
+    var drawn = false;
+    var pulseRAF = null;
 
-    function playPulses() {
-      if (reduce || !edges.length || !svgApi) return;
-      edges.slice(0, pulses.length).forEach(function (edge, i) {
-        var dot = pulses[i];
-        if (!dot) return;
-        animate(dot, Object.assign({}, svgApi.createMotionPath(edge), {
-          opacity: [0, 1, 1, 0],
-          duration: 2200,
-          delay: i * 500,
-          loop: true,
-          ease: "inOutSine"
-        }));
+    function startPulses() {
+      if (reduceMotion || !edges.length) return;
+      var edgeEls = edges.slice(0, pulses.length);
+      pulses.forEach(function (dot, i) {
+        var edge = edgeEls[i];
+        if (!edge) return;
+        var len = edge.getTotalLength ? edge.getTotalLength() : 100;
+        var offset = i * 500;
+        var dur = 2200;
+        function tick(ts) {
+          var t = ((ts - offset) % dur) / dur;
+          if (t < 0) t += 1;
+          var easeT = (1 - Math.cos(t * Math.PI * 2)) / 2; /* inOutSine */
+          var pt = edge.getPointAtLength(len * easeT);
+          dot.setAttribute("cx", pt.x);
+          dot.setAttribute("cy", pt.y);
+          var fadeIn = t < 0.1 ? t / 0.1 : t > 0.85 ? (1 - t) / 0.15 : 1;
+          dot.style.opacity = String(clamp(fadeIn, 0, 1));
+          pulseRAF = window.requestAnimationFrame(tick);
+        }
+        pulseRAF = window.requestAnimationFrame(tick);
       });
     }
 
-    if (reduce || mobile) {
-      onScroll({ target: wrap || svgEl, enter: "top bottom", leave: "bottom top", onEnter: function () { tl.play(); playPulses(); } });
-      return;
-    }
+    function stopPulses() { if (pulseRAF) { window.cancelAnimationFrame(pulseRAF); pulseRAF = null; } }
 
-    onScroll({
-      target: wrap || svgEl, container: null, enter: "top bottom", leave: "bottom top",
-      onEnter: function () { tl.play(); playPulses(); },
-      onEnterBackward: function () { tl.play(); }
-    });
+    var io = new IntersectionObserver(function (ents) {
+      if (!ents[0].isIntersecting) { if (drawn) stopPulses(); return; }
+      io.unobserve(wrap || svgEl);
+      if (drawn) { startPulses(); return; }
+      drawn = true;
+      /* staggered reveal via timeouts */
+      containerNodes.forEach(function (el, i) {
+        track(90 * i, function () { el.style.transition = "opacity .5s var(--ease), transform .5s var(--ease)"; el.style.opacity = "1"; el.style.transform = "none"; });
+      });
+      hubNodes.forEach(function (el, i) {
+        track(260 + i * 90, function () { el.style.transition = "opacity .5s var(--ease), transform .5s var(--ease)"; el.style.opacity = "1"; el.style.transform = "none"; });
+      });
+      labels.forEach(function (el, i) {
+        track(200 + i * 60, function () { el.style.transition = "opacity .5s var(--ease)"; el.style.opacity = "1"; });
+      });
+      edges.forEach(function (el, i) {
+        track(420 + i * 110, function () {
+          el.style.transition = "stroke-dashoffset .7s var(--ease)";
+          el.style.strokeDashoffset = "0";
+        });
+      });
+      track(800, startPulses);
+    }, { threshold: 0.15 });
+    io.observe(wrap || svgEl);
   }
 
   /* =========================================================
-     7 — Funcionalidades — 4 beats sequenciais + resto em stagger
-     (o resto dos cards e o api-panel já são cobertos por wireReveal)
+     7 — Funcionalidades (beats)
      ========================================================= */
-  function setupFeatureBeats(reduce, mobile) {
+  function setupFeatureBeats() {
     var beats = qsa(".beat");
-    if (!beats.length) return;
     beats.forEach(function (beat) {
       var kind = beat.getAttribute("data-beat");
-      var tl = buildBeatTimeline(beat, kind);
-      if (!tl) return;
-      onScroll({
-        target: beat, enter: "top bottom", leave: "bottom top",
-        onEnter: function () { tl.play(); },
-        onEnterBackward: function () { if (!reduce) tl.play(); },
-        onLeaveBackward: function () { tl.pause(); tl.seek(0); }
-      });
+      var demo = qs(".beat-demo", beat);
+      if (!demo) return;
+
+      var io = new IntersectionObserver(function (ents) {
+        if (!ents[0].isIntersecting) return;
+        io.unobserve(beat);
+
+        /* beat fade in */
+        beat.style.transition = "opacity .6s var(--ease), transform .6s var(--ease)";
+        beat.style.opacity = "1";
+        beat.style.transform = "none";
+
+        if (kind === "containers") {
+          var dots = qsa("[data-dot]", beat);
+          dots.forEach(function (d, i) {
+            track(250 + i * 110, function () {
+              d.style.transition = "opacity .4s var(--ease), transform .4s var(--ease)";
+              d.style.opacity = "1"; d.style.transform = "scale(1)";
+            });
+          });
+        } else if (kind === "ports") {
+          var chips = qsa("[data-p]", beat);
+          chips.forEach(function (c, i) {
+            track(250 + i * 140, function () {
+              c.style.transition = "color .5s, border-color .5s, transform .5s var(--ease)";
+              c.style.color = "#34d399";
+              c.style.borderColor = "rgba(52,211,153,.5)";
+              c.style.transform = "scale(1)";
+            });
+          });
+        } else {
+          /* networks / health: draw path */
+          var path = qs("path[data-edge]", demo);
+          if (path) {
+            path.style.strokeDasharray = "1";
+            path.style.strokeDashoffset = "1";
+            track(250, function () {
+              path.style.transition = "stroke-dashoffset .7s var(--ease)";
+              path.style.strokeDashoffset = "0";
+            });
+          }
+        }
+      }, { threshold: 0.2 });
+      io.observe(beat);
     });
   }
 
-  function buildBeatTimeline(beat, kind) {
-    var tl = createTimeline({ defaults: { ease: "outCubic" }, autoplay: false });
-    tl.add(beat, { opacity: [0, 1], translateY: [18, 0], duration: 600 }, 0);
-    if (kind === "containers") {
-      var dots = qsa("[data-dot]", beat);
-      tl.add(dots, { opacity: [0.35, 1], scale: [0.7, 1], delay: stagger(110) }, 250);
-    } else if (kind === "ports") {
-      var chips = qsa("[data-p]", beat);
-      tl.add(chips, {
-        color: ["#94a3b8", "#34d399"],
-        borderColor: ["rgba(148,163,184,.28)", "rgba(52,211,153,.5)"],
-        scale: [0.92, 1],
-        delay: stagger(140)
-      }, 250);
-    } else if (kind === "networks" || kind === "health") {
-      var path = qs("[data-edge]", beat);
-      if (path && svgApi) {
-        var drawable = svgApi.createDrawable(path);
-        tl.add(drawable, { draw: ["0 0", "0 1"], duration: 700, ease: "inOutQuad" }, 250);
-      }
-    }
-    return tl;
-  }
-
   /* =========================================================
-     6 — Arquitetura — pin-stage, fluxo contínuo com "câmera"
+     6 — Arquitetura (pin-stage)
      ========================================================= */
-  function setupArchitecture(reduce, mobile) {
+  function setupArchitecture() {
     var pin = document.getElementById("archPin");
     var stageEl = document.getElementById("archStage");
     if (!pin || !stageEl) return;
-
     var host = qs('[data-node="host"]', stageEl);
     var proxy = qs('[data-node="proxy"]', stageEl);
     var core = qs('[data-node="core"]', stageEl);
     var ui = qs('[data-node="ui"]', stageEl);
     var cli = qs('[data-node="cli"]', stageEl);
     var arrows = qsa(".arrow", stageEl);
+    var growPaths = arrows.map(function (a) { return qs(".grow-path", a); });
+    var archPulses = qsa(".arch-pulse", stageEl);
     var note = qs(".arch-note", stageEl);
 
-    var arrowDrawables = [];
-    arrows.forEach(function (arrowEl) {
-      var path = qs(".grow-path", arrowEl);
-      if (path && svgApi) arrowDrawables.push(svgApi.createDrawable(path)[0]);
-      else arrowDrawables.push(null);
-    });
-    var pulses = qsa(".arch-pulse", stageEl);
+    /* initial states */
+    [host, proxy, core, ui, cli, note].filter(Boolean).forEach(function (el) { applyInitial(el, 0, "translateY(14px) scale(.96)"); });
+    growPaths.filter(Boolean).forEach(function (el) { applyInitial(el); el.style.strokeDashoffset = "1"; el.style.strokeDasharray = "1"; });
+    archPulses.forEach(function (el) { applyInitial(el, 0); });
 
-    if (reduce || mobile) {
-      var seq = createTimeline({ defaults: { ease: "outCubic" }, autoplay: false })
-        .add(host, { opacity: [0, 1], translateY: [16, 0] }, 0)
-        .add(arrowDrawables[0] || {}, { draw: ["0 0", "0 1"] }, 150)
-        .add(proxy, { opacity: [0, 1], translateY: [16, 0] }, 300)
-        .add(arrowDrawables[1] || {}, { draw: ["0 0", "0 1"] }, 450)
-        .add(core, { opacity: [0, 1], translateY: [16, 0] }, 600)
-        .add(arrowDrawables[2] || {}, { draw: ["0 0", "0 1"] }, 750)
-        .add([ui, cli], { opacity: [0, 1], translateY: [16, 0], delay: stagger(90) }, 900)
-        .add(note, { opacity: [0, 1] }, 1150);
-      onScroll({ target: pin, enter: "top bottom", leave: "bottom top", onEnter: function () { seq.play(); } });
+    if (reduceMotion || mobile) {
+      var seq = [host, proxy, core, ui, cli, note].filter(Boolean);
+      var io = new IntersectionObserver(function (ents) {
+        if (!ents[0].isIntersecting) return; io.unobserve(pin);
+        seq.forEach(function (el, i) {
+          track(200 + i * 180, function () {
+            el.style.transition = "opacity .5s var(--ease), transform .5s var(--ease)";
+            el.style.opacity = "1"; el.style.transform = "none";
+          });
+        });
+        growPaths.filter(Boolean).forEach(function (el, i) {
+          track(350 + i * 250, function () {
+            el.style.transition = "stroke-dashoffset .6s var(--ease)";
+            el.style.strokeDashoffset = "0";
+          });
+        });
+      }, { threshold: 0.15 });
+      io.observe(pin);
       return;
     }
 
-    var tl = createTimeline({ defaults: { ease: "linear" } });
-    tl.add(host, { opacity: [0, 1], translateY: [14, 0] }, 0);
-    if (arrowDrawables[0]) tl.add(arrowDrawables[0], { draw: ["0 0", "0 1"] }, 400);
-    if (pulses[0]) tl.add(pulses[0], Object.assign({ opacity: [0, 1, 1, 0] }, arrows[0] && svgApi ? svgApi.createMotionPath(qs(".grow-path", arrows[0])) : {}), 500);
-    tl.add(proxy, { opacity: [0, 1], translateY: [14, 0] }, 1200);
-    if (arrowDrawables[1]) tl.add(arrowDrawables[1], { draw: ["0 0", "0 1"] }, 1600);
-    if (pulses[1]) tl.add(pulses[1], Object.assign({ opacity: [0, 1, 1, 0] }, arrows[1] && svgApi ? svgApi.createMotionPath(qs(".grow-path", arrows[1])) : {}), 1700);
-    tl.add(core, { opacity: [0, 1], translateY: [14, 0] }, 2400);
-    if (arrowDrawables[2]) tl.add(arrowDrawables[2], { draw: ["0 0", "0 1"] }, 2800);
-    if (pulses[2]) tl.add(pulses[2], Object.assign({ opacity: [0, 1, 1, 0] }, arrows[2] && svgApi ? svgApi.createMotionPath(qs(".grow-path", arrows[2])) : {}), 2900);
-    tl.add([ui, cli], { opacity: [0, 1], translateY: [14, 0], delay: stagger(100) }, 3600);
-    tl.add(note, { opacity: [0, 1] }, 4200);
-    tl.add(stageEl, { translateY: [0, -16] }, 0);
+    var arrowEls = growPaths.map(function (p) {
+      if (!p) return null;
+      return { path: p, len: p.getTotalLength ? p.getTotalLength() : 30 };
+    });
 
-    scrubTimeline(tl, { target: pin, container: null, enter: "top top", leave: "bottom bottom" });
+    registerScrub(function (vh) {
+      var rect = pin.getBoundingClientRect();
+      var dist = pin.offsetHeight - vh;
+      if (dist <= 0) return;
+      var p = clamp(-rect.top / dist, 0, 1);
+      function a(from, to) { return ease(seg(p, from, to)); }
+
+      host.style.opacity = String(a(0, 0.12));
+      host.style.transform = "translateY(" + lerp(14, 0, a(0, 0.12)) + "px) scale(" + lerp(0.96, 1, a(0, 0.12)) + ")";
+
+      arrowEls.forEach(function (ae, i) {
+        if (!ae) return;
+        var from = 0.10 + i * 0.22;
+        var to = from + 0.14;
+        drawPath(ae.path, a(from, to));
+      });
+
+      /* arch-pulse positions along path */
+      archPulses.forEach(function (dot, i) {
+        var ae = arrowEls[i];
+        if (!ae || !ae.path) return;
+        var from = 0.10 + i * 0.22;
+        var to = from + 0.14;
+        var pp = seg(p, from, to);
+        var easeP = (1 - Math.cos(pp * Math.PI)) / 2; /* inOutSine */
+        var pt = ae.path.getPointAtLength(ae.len * easeP);
+        dot.setAttribute("cx", pt.x);
+        dot.setAttribute("cy", pt.y);
+        var fadeIn = pp > 0 && pp < 1 ? (pp < 0.1 ? pp / 0.1 : pp > 0.85 ? (1 - pp) / 0.15 : 1) : 0;
+        dot.style.opacity = String(clamp(fadeIn, 0, 1));
+      });
+
+      proxy.style.opacity = String(a(0.22, 0.36));
+      proxy.style.transform = "translateY(" + lerp(14, 0, a(0.22, 0.36)) + "px) scale(" + lerp(0.96, 1, a(0.22, 0.36)) + ")";
+
+      core.style.opacity = String(a(0.48, 0.62));
+      core.style.transform = "translateY(" + lerp(14, 0, a(0.48, 0.62)) + "px) scale(" + lerp(0.96, 1, a(0.48, 0.62)) + ")";
+
+      [ui, cli].filter(Boolean).forEach(function (el, i) {
+        var from = 0.72 + i * 0.05;
+        var ap = a(from, from + 0.12);
+        el.style.opacity = String(ap);
+        el.style.transform = "translateY(" + lerp(14, 0, ap) + "px) scale(" + lerp(0.96, 1, ap) + ")";
+      });
+
+      if (note) { note.style.opacity = String(a(0.88, 1)); note.style.transform = "none"; }
+
+      /* slight camera lift */
+      stageEl.style.transform = "translateY(" + (-16 * p) + "px)";
+    });
   }
 
   /* =========================================================
-     Roadmap — barra de progresso + itens "acesos"
+     Roadmap — barra de progresso + itens acesos
      ========================================================= */
-  function setupRoadmap(reduce, mobile) {
+  function setupRoadmap() {
     var tlWrap = document.getElementById("roadmapTimeline");
     var fill = document.getElementById("tlFill");
     var items = qsa(".tl-item", tlWrap);
     if (!tlWrap) return;
 
-    if (reduce) {
+    /* fill initial */
+    if (fill) fill.style.transformOrigin = "top center";
+
+    if (reduceMotion) {
       if (fill) fill.style.transform = "scaleY(1)";
       items.forEach(function (el) { el.classList.add("lit"); });
       return;
     }
 
+    /* fill progress via rAF driver */
     if (fill) {
-      onScroll({
-        target: tlWrap, container: null, enter: "top center", leave: "bottom center",
-        onUpdate: function (self) { fill.style.transform = "scaleY(" + self.progress + ")"; }
+      registerScrub(function (vh) {
+        var rect = tlWrap.getBoundingClientRect();
+        var center = vh / 2;
+        var top = rect.top;
+        var bottom = rect.bottom;
+        if (bottom < 0 || top > vh) return;
+        var p = clamp((center - top) / (bottom - top), 0, 1);
+        fill.style.transform = "scaleY(" + p + ")";
       });
     }
-    items.forEach(function (el) {
-      onScroll({
-        target: el, enter: "center bottom", leave: "center top",
-        onEnter: function () { el.classList.add("lit"); },
-        onLeave: function () { el.classList.remove("lit"); },
-        onEnterBackward: function () { el.classList.add("lit"); },
-        onLeaveBackward: function () { el.classList.remove("lit"); }
+
+    /* items lit via IO */
+    var itemIO = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) en.target.classList.add("lit");
+        else en.target.classList.remove("lit");
       });
-    });
+    }, { rootMargin: "-40% 0px -40% 0px", threshold: 0 });
+    items.forEach(function (el) { itemIO.observe(el); });
   }
 
   /* =========================================================
-     Instalação — terminal + checklist + chips de pré-requisitos
+     Instalação — terminal + checklist + chips
      ========================================================= */
-  function setupInstall(reduce, mobile) {
+  function setupInstall() {
     var installTerm = document.getElementById("installTerm");
     var check = document.getElementById("installCheck");
     var reqChips = qsa("#reqChips .chip");
-
     var checkItems = check ? qsa(".ic-item", check) : [];
+    var icPaths = check ? qsa(".ic-path", check) : [];
+    var played = false;
+
     function playChecklist() {
       if (!checkItems.length) return;
-      var paths = qsa(".ic-path", check);
-      var drawables = paths.length && svgApi ? svgApi.createDrawable(paths) : null;
-      animate(checkItems, { opacity: [0, 1], translateX: [-6, 0], delay: stagger(160), duration: 300 });
-      if (drawables) animate(drawables, { draw: ["0 0", "0 1"], delay: stagger(160, { start: 120 }), duration: 260, ease: "inOutQuad" });
+      checkItems.forEach(function (el, i) {
+        track(160 * i, function () {
+          el.style.transition = "opacity .3s var(--ease), transform .3s var(--ease)";
+          el.style.opacity = "1";
+          el.style.transform = "none";
+        });
+      });
+      icPaths.forEach(function (p, i) {
+        p.style.strokeDasharray = "1";
+        p.style.strokeDashoffset = "1";
+        track(120 + i * 160, function () {
+          p.style.transition = "stroke-dashoffset .26s var(--ease)";
+          p.style.strokeDashoffset = "0";
+        });
+      });
     }
+
     function resetChecklist() {
-      if (!checkItems.length) return;
-      checkItems.forEach(function (el) { el.style.opacity = 0; });
-      qsa(".ic-path", check).forEach(function (p) { p.style.strokeDashoffset = 1; });
+      checkItems.forEach(function (el) { el.style.opacity = "0"; });
+      icPaths.forEach(function (p) { p.style.strokeDashoffset = "1"; });
     }
+
+    /* chips initial */
+    reqChips.forEach(function (c) { c.style.transition = "none"; c.style.opacity = "0"; c.style.transform = "translateY(8px) scale(.94)"; });
 
     var term = makeTerminal(installTerm, INSTALL_LINES, {
       lineDelay: 90,
       holdTime: 2600,
-      onDone: reduce ? null : playChecklist
+      onDone: reduceMotion ? null : function () {
+        if (!played) { played = true; playChecklist(); }
+      }
     });
 
-    if (reduce) {
-      staticTerminalInto(installTerm, INSTALL_LINES);
-      if (check) checkItems.forEach(function (el) { el.style.opacity = 1; });
+    if (reduceMotion) {
+      staticTerminals();
+      checkItems.forEach(function (el) { el.style.opacity = "1"; el.style.transform = "none"; });
+      reqChips.forEach(function (c) { c.style.opacity = "1"; c.style.transform = "none"; });
     } else {
-      onScroll({
-        target: installTerm, enter: "top bottom", leave: "bottom top",
-        onEnter: term.play,
-        onLeave: function () { term.stop(); resetChecklist(); }
-      });
-    }
+      var io = new IntersectionObserver(function (ents) {
+        if (!ents[0].isIntersecting) { term.stop(); resetChecklist(); return; }
+        io.unobserve(installTerm);
+        played = false;
+        term.play();
+      }, { threshold: 0.15 });
+      io.observe(installTerm);
 
-    if (reqChips.length) {
-      if (reduce) {
-        reqChips.forEach(function (c) { c.style.opacity = 1; });
-      } else {
-        onScroll({
-          target: "#reqChips", enter: "top bottom", leave: "bottom top",
-          onEnter: function () {
-            animate(reqChips, { opacity: [0, 1], translateY: [8, 0], scale: [0.94, 1], delay: stagger(70) });
-          }
-        });
+      if (reqChips.length) {
+        var chipIO = new IntersectionObserver(function (ents) {
+          if (!ents[0].isIntersecting) return;
+          chipIO.unobserve(qs("#reqChips"));
+          reqChips.forEach(function (c, i) {
+            track(70 * i, function () {
+              c.style.transition = "opacity .4s var(--ease), transform .4s var(--ease)";
+              c.style.opacity = "1"; c.style.transform = "none";
+            });
+          });
+        }, { threshold: 0.2 });
+        chipIO.observe(qs("#reqChips"));
       }
     }
   }
 
-  function staticTerminalInto(container, lines) {
-    if (!container) return;
-    container.innerHTML = lines.map(function (l) { return '<div class="' + l.cls + '" style="opacity:1">' + l.html + "</div>"; }).join("");
+  /* =========================================================
+     Inicialização principal — try/catch global
+     ========================================================= */
+  function track(ms, fn) { return window.setTimeout(fn, ms); }
+
+  try {
+    setupIOReveal();
+    setupHero();
+    setupJourney();
+    setupDashboard();
+    setupPorts();
+    setupNetworks();
+    setupFeatureBeats();
+    setupArchitecture();
+    setupRoadmap();
+    setupInstall();
+
+    /* hero terminal loop */
+    if (!reduceMotion) {
+      var heroTerm = makeTerminal(document.getElementById("termOut"), HERO_LINES, { lineDelay: 55, holdTime: 3400 });
+      track(500, function () { heroTerm.play(); });
+      var heroTermIO = new IntersectionObserver(function (ents) {
+        if (!ents[0].isIntersecting) heroTerm.stop(); else heroTerm.play();
+      }, { threshold: 0 });
+      heroTermIO.observe(document.getElementById("termOut"));
+    }
+
+    /* counters */
+    if (!reduceMotion) {
+      qsa("[data-count]").forEach(function (el) {
+        var io = new IntersectionObserver(function (ents) {
+          if (!ents[0].isIntersecting) return;
+          io.unobserve(el);
+          animateCount(el);
+        }, { threshold: 0.3 });
+        io.observe(el);
+      });
+    } else {
+      forceCounters();
+    }
+
+  } catch (err) {
+    failSafe(err);
   }
+
+  function failSafe(err) {
+    console.warn("[PortWatch] Motor de animação falhou, fallback seguro:", err);
+    root.classList.add("failsafe");
+    root.classList.remove("scrub");
+    var section = qs(".journey");
+    if (section) section.classList.remove("pinned");
+
+    /* força todos os elementos inicialmente ocultos a ficarem visíveis */
+    qsa(
+      ".reveal, .reveal--left, .reveal--right, .reveal--zoom," +
+      ".h-in, .terminal-wrap, .shot, .bar, .pchip, .node," +
+      ".chip, .port-node, .arch-note, .ng-label," +
+      ".hero-graph .hg-node, .hero-graph .hg-ring," +
+      ".netgraph .ng-node, .netgraph .ng-edge," +
+      ".hero-graph .hg-line, .grow-path," +
+      ".bd-net path, .bd-heart path, .ic-path," +
+      ".shot-layer, .ic-item, .tl-fill"
+    ).forEach(function (el) {
+      el.style.transition = "none";
+      el.style.opacity = "1";
+      el.style.transform = "none";
+      if (el.style.strokeDashoffset !== undefined) el.style.strokeDashoffset = "0";
+      el.classList.add("is-visible");
+    });
+
+    staticTerminals();
+    forceCounters();
+  }
+
 })();

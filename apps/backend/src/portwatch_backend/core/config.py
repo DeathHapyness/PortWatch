@@ -4,11 +4,16 @@ All settings come from environment variables (12-factor). Nothing here reads
 from a config file or database — see docs/adr/0002-no-database-v1.md for why.
 """
 
-from pydantic import field_validator
+import math
+from typing import Self
+from urllib.parse import urlsplit
+
+from pydantic import ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Hosts considered "local only" for the bind-security check below.
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
+_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
 
 
 class Settings(BaseSettings):
@@ -55,6 +60,60 @@ class Settings(BaseSettings):
                 "restricted to explicit dashboard origin(s), never a wildcard."
             )
         return origins
+
+    @field_validator("collector_poll_interval_seconds")
+    @classmethod
+    def _validate_poll_interval(cls, interval: float) -> float:
+        if not math.isfinite(interval) or interval <= 0:
+            raise ValueError("collector_poll_interval_seconds must be finite and greater than zero")
+        return interval
+
+    @field_validator("port_range_start", "port_range_end")
+    @classmethod
+    def _validate_port(cls, port: int) -> int:
+        if not 0 <= port <= 65535:
+            raise ValueError("port range values must be between 0 and 65535")
+        return port
+
+    @field_validator("log_level")
+    @classmethod
+    def _validate_log_level(cls, level: str) -> str:
+        normalized = level.upper()
+        if normalized not in _LOG_LEVELS:
+            supported = ", ".join(sorted(_LOG_LEVELS))
+            raise ValueError(f"log_level must be one of: {supported}")
+        return normalized
+
+    @field_validator("docker_proxy_url", "netprobe_url")
+    @classmethod
+    def _validate_service_url(cls, url: str | None, info: ValidationInfo) -> str | None:
+        if url is None:
+            return None
+        if url != url.strip() or any(character.isspace() for character in url):
+            raise ValueError(f"{info.field_name} must not contain whitespace")
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or parsed.hostname is None:
+            raise ValueError(f"{info.field_name} must be an absolute HTTP or HTTPS URL")
+        try:
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError(f"{info.field_name} contains an invalid port") from exc
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError(f"{info.field_name} must not contain credentials")
+        return url
+
+    @field_validator("api_token")
+    @classmethod
+    def _reject_whitespace_only_token(cls, token: str) -> str:
+        if token and not token.strip():
+            raise ValueError("api_token must not contain only whitespace")
+        return token
+
+    @model_validator(mode="after")
+    def _validate_port_range_order(self) -> Self:
+        if self.port_range_start > self.port_range_end:
+            raise ValueError("port_range_start must be less than or equal to port_range_end")
+        return self
 
 
 def validate_bind_security(settings: Settings) -> None:

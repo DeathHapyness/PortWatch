@@ -7,10 +7,12 @@ import { NetworksView } from '@/components/views/NetworksView'
 import { OverviewView } from '@/components/views/OverviewView'
 import { PortsView } from '@/components/views/PortsView'
 import { portwatchQueryKeys, useSystemSummaryQuery } from '@/lib/queries'
+import { useSnapshotEvents } from '@/lib/useSnapshotEvents'
 
 export function App() {
   const [activeTab, setActiveTab] = React.useState<TabType>('overview')
   const queryClient = useQueryClient()
+  useSnapshotEvents()
 
   const {
     data: systemSummary,

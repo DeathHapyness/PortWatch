@@ -16,16 +16,20 @@ transmite invalidações de snapshot em tempo real; autentica via header
 podem setar headers customizados no handshake — ver
 `docs/adr/0006-websocket-first-message-auth.md`). Frontend: dashboard
 funcional (Overview/Containers/Networks/Ports) já consumindo as APIs REST
-via TanStack Query, ainda por poll (consumo do WebSocket é o único item
-aberto em `docs/tasks/backlog.md`). Testes E2E (`apps/backend/tests/e2e/`,
+via TanStack Query, e também consome `/api/v1/events` (`useSnapshotEvents`)
+para invalidar as queries assim que o Collector publica um novo snapshot —
+o poll continua como fallback. Testes E2E (`apps/backend/tests/e2e/`,
 `make test-e2e`) sobem o sandbox real e validam o Collector fim a fim
 através do `docker-socket-proxy`/`netprobe` de verdade. Observabilidade
 (Fase 9): métricas Prometheus em `GET /metrics` (protegido pelo mesmo
 bearer token, ver `core/metrics.py`) — requests HTTP por rota/status e
 ciclos do Collector (duração, sucesso/falha, geração/containers/portas do
-snapshot atual); tracing (OpenTelemetry) segue fora do MVP por decisão de
-escopo. Falta: o frontend consumir o WebSocket. Arquitetura completa e
-roadmap: https://claude.ai/code/artifact/b41be8c8-2963-4ef8-a4f7-b984b68407a8
+snapshot atual) — e logs estruturados em JSON com `request_id` correlacionado
+por requisição e redação best-effort de segredos (`core/logging.py`); tracing
+(OpenTelemetry) segue fora do MVP por decisão de escopo. Gaps essenciais do
+roadmap original estão fechados — o que resta é maturidade (mais cobertura
+de testes, pequenas manutenções). Arquitetura completa e roadmap:
+https://claude.ai/code/artifact/b41be8c8-2963-4ef8-a4f7-b984b68407a8
 
 Decisões arquiteturais registradas em `docs/adr/`.
 
@@ -84,7 +88,12 @@ export PORTWATCH_NETPROBE_URL=http://127.0.0.1:8088
 uv run uvicorn portwatch_backend.app:app --reload --port 8000
 
 # Frontend — http://127.0.0.1:5173, proxy /api/* -> backend acima
+# (proxy inclui upgrade de WebSocket para /api/v1/events)
 cd apps/web
+# Só necessário se o backend tiver um token configurado — o dashboard usa
+# esse token na primeira mensagem do WebSocket (ADR-0006); as chamadas REST
+# não usam token ainda (ver src/lib/config.ts).
+export VITE_API_TOKEN=<mesmo valor de PORTWATCH_API_TOKEN, se configurado>
 pnpm install
 pnpm dev
 ```

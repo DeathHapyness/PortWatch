@@ -16,28 +16,33 @@ header `Authorization` (browser); o header continua funcionando como
 fallback. Testes em `tests/test_events.py` cobrem sucesso, token errado e
 timeout. Quality gates (ruff/format/mypy/pytest/e2e) verdes.
 
+### 2. Observabilidade — métricas Prometheus (Fase 9) ✅
+Implementado pelo Lead (`agent/backend/observability-metrics`, commit
+`f448232`), com dois follow-ups de correção do Codex, ambos revisados e
+mergeados: cardinalidade de rotas não encontradas (`agent/backend/
+metrics-cardinality-errors`, `5f2bd26`) e — junto — logs estruturados em
+JSON (`agent/backend/structured-logging`, `5afee6d`, ver item 4). `GET
+/metrics` protegido pelo mesmo bearer token; `core/metrics.py`.
+
+### 3. Frontend — consumo do WebSocket no dashboard ✅
+Implementado pelo Lead. `apps/web/src/lib/useSnapshotEvents.ts`: abre
+`/api/v1/events`, manda `{"token": ...}` (via `VITE_API_TOKEN`, ver
+`lib/config.ts`) como primeira mensagem (ADR-0006), invalida
+`portwatchQueryKeys.all` em cada `snapshot.updated`, reconecta com backoff
+exponencial (1s→30s). `vite.config.ts` ganhou `ws: true` no proxy do dev
+server. Testes em `lib/useSnapshotEvents.test.tsx`. `pnpm lint/format:check/
+build/test` verdes.
+
+### 4. Observabilidade — logs estruturados JSON (Fase 9) ✅
+Implementado por Codex (auto-iniciado) em `agent/backend/structured-logging`
+(commit `5afee6d`), revisado pelo Lead e mergeado. `core/logging.py`: JSON
+formatter com schema fixo (não serializa `extra` arbitrário), `request_id`
+correlacionado via `ContextVar` (bind/reset em `request_id_middleware`),
+redação best-effort de `Bearer`/`token=`/`"token":"..."` nas mensagens e
+exceções. Testes em `tests/test_logging.py`.
+
 ## Em aberto
 
-### 2. Frontend — consumo do WebSocket no dashboard
-- **Branch sugerido:** `agent/frontend/websocket-live-updates`
-- **Dono sugerido:** Copilot
-- **Contexto:** o dashboard (`apps/web`) hoje só faz poll via TanStack
-  Query; o backend já publica `snapshot.updated` em `/api/v1/events`
-  (ver ADR-0006 para o protocolo de auth a seguir).
-- **Escopo:**
-  - Client WebSocket para `/api/v1/events`: abrir o socket, mandar
-    `{"token": "<api token atual>"}` como primeira mensagem, tratar
-    mensagens subsequentes como eventos `snapshot.updated`.
-  - Ao receber um evento, invalidar/atualizar as queries do TanStack
-    Query correspondentes em vez de depender só do poll atual.
-  - Reconexão em disconnect (backoff simples).
-  - Testes (vitest) cobrindo handshake, evento de invalidação e
-    reconexão.
-  - `pnpm lint`, `pnpm format:check`, `pnpm build`, `pnpm test` verdes
-    antes de abrir para revisão.
-
-## Depois disso (fila, sem dono ainda)
-
-### 3. Observabilidade — métricas Prometheus (Fase 9)
-Ver `README.md` (seção Status) e `CLAUDE.md` (Observabilidade: "logs
-estruturados + métricas Prometheus no MVP"). Ainda não iniciado.
+Nenhum item específico no momento — próximas tarefas a definir conforme
+Codex/Copilot ficarem livres. Copilot está focado em cobertura de testes
+adicional por pedido direto do usuário (fora deste backlog formal).

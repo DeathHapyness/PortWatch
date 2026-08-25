@@ -13,7 +13,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://127.0.0.1:8000',
+      // ws: true so the /api/v1/events WebSocket upgrade proxies too —
+      // Vite's proxy does not forward WS upgrades by default, only plain
+      // HTTP. Harmless for the rest of /api/*, which is plain HTTP.
+      '/api': { target: 'http://127.0.0.1:8000', ws: true },
     },
   },
 })

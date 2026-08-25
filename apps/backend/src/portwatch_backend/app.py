@@ -1,7 +1,9 @@
 """FastAPI application factory.
 
-Structured logging / metrics / tracing are intentionally not wired up here —
-that's Phase 9 (Observability). Routing, CORS, and RFC 7807-shaped error
+Structured logging / tracing are intentionally not wired up here — tracing
+stays out of the MVP (OpenTelemetry, see CLAUDE.md), and this middleware
+stack is the extension point for it later. Prometheus metrics (Phase 9) are
+wired up below via core/metrics.py. Routing, CORS, and RFC 7807-shaped error
 responses are the Phase 2 foundation; the Collector lifecycle below is
 Phase 3 (see collector/service.py).
 """
@@ -9,11 +11,12 @@ Phase 3 (see collector/service.py).
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from portwatch_backend.api import containers, events, health, networks, ports, system
 from portwatch_backend.collector.service import Collector
@@ -21,6 +24,7 @@ from portwatch_backend.collector.state import SnapshotStore
 from portwatch_backend.core.auth import require_api_token
 from portwatch_backend.core.config import get_settings
 from portwatch_backend.core.events import SnapshotBroadcaster
+from portwatch_backend.core.metrics import PortWatchMetrics, build_http_metrics_middleware
 from portwatch_backend.core.middleware import request_id_middleware
 from portwatch_backend.core.schemas import ProblemDetail
 
@@ -41,7 +45,8 @@ def create_app() -> FastAPI:
     settings = get_settings()
     event_broadcaster = SnapshotBroadcaster()
     snapshot_store = SnapshotStore(on_publish=event_broadcaster.publish)
-    collector = Collector(settings, snapshot_store)
+    metrics = PortWatchMetrics()
+    collector = Collector(settings, snapshot_store, metrics=metrics)
 
     app = FastAPI(
         title="PortWatch API",
@@ -55,6 +60,7 @@ def create_app() -> FastAPI:
     app.state.snapshot_store = snapshot_store
     app.state.collector = collector
     app.state.event_broadcaster = event_broadcaster
+    app.state.metrics = metrics
 
     app.add_middleware(
         CORSMiddleware,
@@ -65,6 +71,7 @@ def create_app() -> FastAPI:
         expose_headers=["X-Request-Id"],
     )
     app.middleware("http")(request_id_middleware)
+    app.middleware("http")(build_http_metrics_middleware(metrics))
 
     @app.exception_handler(HTTPException)
     async def problem_detail_handler(request: Request, exc: HTTPException) -> JSONResponse:
@@ -110,6 +117,22 @@ def create_app() -> FastAPI:
     @app.websocket("/api/v1/events", name="snapshot-events")
     async def snapshot_events(websocket: WebSocket) -> None:
         await events.snapshot_events(websocket)
+
+    @app.get(
+        "/metrics",
+        dependencies=protected,
+        summary="Prometheus metrics",
+        include_in_schema=False,
+    )
+    async def prometheus_metrics() -> Response:
+        # Bearer-protected like the rest of the API (unlike /health*, which
+        # is deliberately open for liveness/readiness probes — see S-01):
+        # metrics aren't a liveness signal an orchestrator needs unauthenticated,
+        # and Prometheus scrape configs support a static bearer_token natively.
+        return Response(
+            content=generate_latest(metrics.registry),
+            media_type=CONTENT_TYPE_LATEST,
+        )
 
     app.include_router(health.router)
     app.include_router(system.router, dependencies=protected)

@@ -16,12 +16,17 @@ puro sem um mecanismo adicional, já que a WebSocket API nativa não permite
 headers customizados; pendente de decisão antes da integração no frontend).
 Frontend: dashboard funcional (Overview/Containers/Networks/Ports) já
 consumindo as APIs REST via TanStack Query, ainda por poll (não consome o
-WebSocket ainda). Testes E2E (`apps/backend/tests/e2e/`, `make test-e2e`)
-sobem o sandbox real e validam o Collector fim a fim através do
-`docker-socket-proxy`/`netprobe` de verdade. Falta: o frontend consumir o
-WebSocket, e observabilidade (Fase 9 — métricas Prometheus). Arquitetura
-completa e roadmap:
-https://claude.ai/code/artifact/b41be8c8-2963-4ef8-a4f7-b984b68407a8
+WebSocket ainda — protocolo de auth decidido em
+`docs/adr/0006-websocket-first-message-auth.md`, implementação em
+`docs/tasks/backlog.md`). Testes E2E (`apps/backend/tests/e2e/`,
+`make test-e2e`) sobem o sandbox real e validam o Collector fim a fim
+através do `docker-socket-proxy`/`netprobe` de verdade. Observabilidade
+(Fase 9): métricas Prometheus em `GET /metrics` (protegido pelo mesmo
+bearer token, ver `core/metrics.py`) — requests HTTP por rota/status e
+ciclos do Collector (duração, sucesso/falha, geração/containers/portas do
+snapshot atual); tracing (OpenTelemetry) segue fora do MVP por decisão de
+escopo. Falta: o frontend consumir o WebSocket. Arquitetura completa e
+roadmap: https://claude.ai/code/artifact/b41be8c8-2963-4ef8-a4f7-b984b68407a8
 
 Decisões arquiteturais registradas em `docs/adr/`.
 

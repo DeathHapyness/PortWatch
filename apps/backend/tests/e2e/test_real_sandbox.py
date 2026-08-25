@@ -175,3 +175,29 @@ async def test_system_summary_reports_the_real_docker_version(
     assert body["docker_version"]  # non-empty: came from the real daemon
     assert body["host_ports_enabled"] is True
     assert body["containers_running"] >= 1
+
+
+def _metric_value(body: str, prefix: str) -> float:
+    # Minimal Prometheus text-format line lookup: find the one line starting
+    # with `prefix` (name, optionally with a `{...}` label set) and parse
+    # the trailing value. Not a general parser — good enough for one known
+    # series in output we control.
+    for line in body.splitlines():
+        if line.startswith(prefix):
+            return float(line.rsplit(" ", 1)[-1])
+    raise AssertionError(f"no metric line starting with {prefix!r} in:\n{body}")
+
+
+async def test_metrics_reports_a_real_completed_collector_cycle(
+    sandbox_client: httpx.AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    # sandbox_client's fixture blocks on /health/ready == 200 before
+    # yielding, so at least one real cycle against the real sandbox has
+    # already run and been observed by the background loop's metrics hook
+    # (core/metrics.py's Collector wiring — see collector/service.py:_run).
+    response = await sandbox_client.get("/metrics", headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.text
+    assert _metric_value(body, 'portwatch_collector_cycles_total{outcome="success"}') >= 1.0
+    assert _metric_value(body, "portwatch_snapshot_generation") >= 1.0

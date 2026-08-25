@@ -17,6 +17,7 @@ than failing the whole cycle.
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 
 import docker
@@ -35,6 +36,7 @@ from portwatch_backend.collector.parsing import (
 )
 from portwatch_backend.collector.state import CollectorSnapshot, SnapshotStore
 from portwatch_backend.core.config import Settings
+from portwatch_backend.core.metrics import PortWatchMetrics
 from portwatch_backend.core.schemas import ContainerDetail, NetworkSummary
 
 logger = logging.getLogger(__name__)
@@ -51,10 +53,12 @@ class Collector:
         store: SnapshotStore,
         *,
         client_factory: ClientFactory | None = None,
+        metrics: PortWatchMetrics | None = None,
     ) -> None:
         self._settings = settings
         self._store = store
         self._client_factory = client_factory or (lambda: make_docker_client(settings))
+        self._metrics = metrics
         self._stop_event = threading.Event()
         self._lifecycle_lock = threading.Lock()
         self._thread: threading.Thread | None = None
@@ -98,10 +102,22 @@ class Collector:
 
     def _run(self) -> None:
         while not self._stop_event.is_set():
+            start = time.monotonic()
             try:
-                self.collect_once()
+                snapshot = self.collect_once()
             except Exception:  # noqa: BLE001 - a bad cycle must never kill the thread
                 logger.warning("collector: poll cycle failed, keeping last snapshot", exc_info=True)
+                if self._metrics is not None:
+                    self._metrics.observe_cycle_failure(duration_seconds=time.monotonic() - start)
+            else:
+                if self._metrics is not None:
+                    self._metrics.observe_cycle_success(
+                        duration_seconds=time.monotonic() - start,
+                        generation=snapshot.generation,
+                        containers=len(snapshot.containers),
+                        ports=len(snapshot.ports),
+                        collected_at=snapshot.collected_at,
+                    )
             self._stop_event.wait(self._settings.collector_poll_interval_seconds)
 
     def collect_once(self) -> CollectorSnapshot:

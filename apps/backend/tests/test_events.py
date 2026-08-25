@@ -127,7 +127,7 @@ async def test_websocket_receives_snapshot_updates_from_store_publish() -> None:
     }
 
 
-async def test_websocket_rejects_a_missing_bearer_token_without_crashing(
+async def test_websocket_rejects_an_invalid_bearer_header_without_crashing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Regression test: an HTTPException raised before websocket.accept()
@@ -142,7 +142,9 @@ async def test_websocket_rejects_a_missing_bearer_token_without_crashing(
     )
     app = create_app()
 
-    _inbound, outbound, connection = await _open_connection(app)
+    _inbound, outbound, connection = await _open_connection(
+        app, headers=[(b"authorization", b"Bearer wrong")]
+    )
 
     closed = await asyncio.wait_for(outbound.get(), timeout=1)
     await asyncio.wait_for(connection, timeout=1)
@@ -169,3 +171,64 @@ async def test_websocket_accepts_a_valid_bearer_token(
 
     await inbound.put({"type": "websocket.disconnect", "code": 1000})
     await asyncio.wait_for(connection, timeout=1)
+
+
+async def test_websocket_accepts_token_in_first_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "portwatch_backend.core.auth.get_settings",
+        lambda: Settings(api_token="s3cr3t"),
+    )
+    app = create_app()
+
+    inbound, outbound, connection = await _open_connection(app)
+
+    accepted = await asyncio.wait_for(outbound.get(), timeout=1)
+    assert accepted["type"] == "websocket.accept"
+    await inbound.put({"type": "websocket.receive", "text": '{"token":"s3cr3t"}'})
+    await inbound.put({"type": "websocket.disconnect", "code": 1000})
+    await asyncio.wait_for(connection, timeout=1)
+
+
+async def test_websocket_rejects_wrong_token_in_first_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "portwatch_backend.core.auth.get_settings",
+        lambda: Settings(api_token="s3cr3t"),
+    )
+    app = create_app()
+
+    inbound, outbound, connection = await _open_connection(app)
+
+    accepted = await asyncio.wait_for(outbound.get(), timeout=1)
+    assert accepted["type"] == "websocket.accept"
+    await inbound.put({"type": "websocket.receive", "text": '{"token":"wrong"}'})
+    closed = await asyncio.wait_for(outbound.get(), timeout=1)
+    await asyncio.wait_for(connection, timeout=1)
+
+    assert closed == {"type": "websocket.close", "code": 1008, "reason": ""}
+
+
+async def test_websocket_rejects_missing_first_message_after_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "portwatch_backend.core.auth.get_settings",
+        lambda: Settings(api_token="s3cr3t"),
+    )
+    monkeypatch.setattr(
+        "portwatch_backend.api.events.AUTH_MESSAGE_TIMEOUT_SECONDS",
+        0.01,
+    )
+    app = create_app()
+
+    _inbound, outbound, connection = await _open_connection(app)
+
+    accepted = await asyncio.wait_for(outbound.get(), timeout=1)
+    assert accepted["type"] == "websocket.accept"
+    closed = await asyncio.wait_for(outbound.get(), timeout=1)
+    await asyncio.wait_for(connection, timeout=1)
+
+    assert closed == {"type": "websocket.close", "code": 1008, "reason": ""}

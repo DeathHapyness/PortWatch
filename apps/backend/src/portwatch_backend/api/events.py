@@ -11,16 +11,34 @@ from portwatch_backend.core.auth import validate_api_token
 from portwatch_backend.core.events import BroadcasterClosedError, SnapshotBroadcaster
 
 AUTH_MESSAGE_TIMEOUT_SECONDS = 5.0
+MAX_AUTH_MESSAGE_BYTES = 4 * 1024
+MAX_AUTH_TOKEN_BYTES = 1024
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in payload:
+            raise ValueError("authentication message contains duplicate fields")
+        payload[key] = value
+    return payload
 
 
 def _token_from_message(raw_message: str) -> str:
-    payload: Any = json.loads(raw_message)
+    if len(raw_message.encode("utf-8")) > MAX_AUTH_MESSAGE_BYTES:
+        raise ValueError("authentication message is too large")
+
+    payload: Any = json.loads(raw_message, object_pairs_hook=_unique_object)
     if not isinstance(payload, dict):
         raise ValueError("authentication message must be an object")
+    if set(payload) != {"token"}:
+        raise ValueError("authentication message must contain only the token field")
 
     token = payload.get("token")
-    if not isinstance(token, str) or not token:
-        raise ValueError("authentication message must contain a token")
+    if not isinstance(token, str) or not token.strip():
+        raise ValueError("authentication token must be a non-empty string")
+    if len(token.encode("utf-8")) > MAX_AUTH_TOKEN_BYTES:
+        raise ValueError("authentication token is too large")
     return token
 
 

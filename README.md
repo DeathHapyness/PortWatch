@@ -10,15 +10,14 @@ expõe readiness real; todas as rotas (`containers`, `networks`, `system`,
 Autenticação por token estático (ADR-0004), erros no contrato RFC 7807
 completo (incluindo validação 422 e `request_id` por requisição), e labels/env
 de containers redigidos por padrão (PW-03). WebSocket `/api/v1/events`
-transmite invalidações de snapshot em tempo real (token via header
-`Authorization`, mesmo esquema do REST — não usável a partir de um browser
-puro sem um mecanismo adicional, já que a WebSocket API nativa não permite
-headers customizados; pendente de decisão antes da integração no frontend).
-Frontend: dashboard funcional (Overview/Containers/Networks/Ports) já
-consumindo as APIs REST via TanStack Query, ainda por poll (não consome o
-WebSocket ainda — protocolo de auth decidido em
-`docs/adr/0006-websocket-first-message-auth.md`, implementação em
-`docs/tasks/backlog.md`). Testes E2E (`apps/backend/tests/e2e/`,
+transmite invalidações de snapshot em tempo real; autentica via header
+`Authorization` (clientes não-browser) ou, quando ausente, via
+`{"token": "..."}` como primeira mensagem da conexão (browsers, que não
+podem setar headers customizados no handshake — ver
+`docs/adr/0006-websocket-first-message-auth.md`). Frontend: dashboard
+funcional (Overview/Containers/Networks/Ports) já consumindo as APIs REST
+via TanStack Query, ainda por poll (consumo do WebSocket é o único item
+aberto em `docs/tasks/backlog.md`). Testes E2E (`apps/backend/tests/e2e/`,
 `make test-e2e`) sobem o sandbox real e validam o Collector fim a fim
 através do `docker-socket-proxy`/`netprobe` de verdade. Observabilidade
 (Fase 9): métricas Prometheus em `GET /metrics` (protegido pelo mesmo

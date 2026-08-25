@@ -5,27 +5,18 @@ Mantido pelo Lead. Cada item vira um branch `agent/<área>/<slug>` isolado
 pronto, PR/revisão do Lead antes do merge em `main` — nenhum agente faz merge
 do próprio trabalho.
 
-## Em aberto
+## Concluído
 
-### 1. Backend — autenticação do WebSocket via primeira mensagem
-- **Branch sugerido:** `agent/backend/ws-first-message-auth`
-- **Dono sugerido:** Codex
-- **Contexto:** ADR-0006 (`docs/adr/0006-websocket-first-message-auth.md`)
-  decide como destravar o consumo do WS `/api/v1/events` a partir do
-  browser (token não pode ir na URL nem em header custom).
-- **Escopo:**
-  - Em `apps/backend/src/portwatch_backend/api/events.py`: aceitar a
-    conexão, aguardar até 5s por uma primeira mensagem de texto
-    `{"token": "..."}`, validar com `validate_api_token()`
-    (`core/auth.py`, já existe e é reaproveitável). Fechar com
-    `code=1008` se inválido/ausente/timeout — mesmo código já usado hoje
-    para o path de header ausente.
-  - Manter o path por header `Authorization` funcionando como fallback
-    (não quebrar `tests/test_events.py` existente).
-  - Testes novos: sucesso via primeira mensagem, token errado via
-    primeira mensagem, timeout sem nenhuma mensagem.
-  - `ruff check`, `ruff format --check`, `mypy src`, `pytest` verdes
-    antes de abrir para revisão.
+### 1. Backend — autenticação do WebSocket via primeira mensagem ✅
+Implementado por Codex em `agent/backend/ws-first-message-auth` (commit
+`c83c25a`), revisado pelo Lead e mergeado em `main` (merge commit, 2026-08-25).
+`apps/backend/src/portwatch_backend/api/events.py` agora aceita a conexão e
+aguarda até 5s por `{"token": "..."}` como primeira mensagem quando não há
+header `Authorization` (browser); o header continua funcionando como
+fallback. Testes em `tests/test_events.py` cobrem sucesso, token errado e
+timeout. Quality gates (ruff/format/mypy/pytest/e2e) verdes.
+
+## Em aberto
 
 ### 2. Frontend — consumo do WebSocket no dashboard
 - **Branch sugerido:** `agent/frontend/websocket-live-updates`

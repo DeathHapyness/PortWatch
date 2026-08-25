@@ -33,6 +33,7 @@
       --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
       --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --nav-h: 64px;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -60,109 +61,107 @@
         var(--bg);
     }
     .backdrop::after {
-      content: ""; position: absolute; inset: 0;
+      content: ""; position: absolute; inset: -10% -10% -10% -10%;
       background-image:
         linear-gradient(rgba(148,163,184,0.04) 1px, transparent 1px),
         linear-gradient(90deg, rgba(148,163,184,0.04) 1px, transparent 1px);
       background-size: 44px 44px;
       mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, black 30%, transparent 75%);
+      will-change: transform;
     }
 
     .container { width: min(1120px, 100% - 48px); margin-inline: auto; }
 
     /* =========================================================
-       Sistema de animação scroll-driven
-       - Entradas: IntersectionObserver adiciona .in (uma vez)
-       - Scrub (amarrado ao progresso do scroll): CSS
-         animation-timeline quando suportado (html.sda)
-       - Sem JS: html sem .js => tudo visível estaticamente
+       Sistema de animação — Anime.js (website/assets/site.js)
+       - `.reveal` define o estado inicial oculto quando há JS
+         (html.js). O JS anima até o estado final; nunca uma
+         transição CSS "genérica" cuidando disso.
+       - Sem JS ou com prefers-reduced-motion: tudo visível,
+         sem transformação — ver blocos abaixo.
        ========================================================= */
-    html.js [data-animate]:not(.scrub) {
-      opacity: 0;
-      transform: translateY(24px);
-      transition:
-        opacity 0.7s var(--ease),
-        transform 0.7s var(--ease),
-        clip-path 0.9s var(--ease);
-      transition-delay: var(--d, 0ms);
-    }
-    html.js [data-animate="left"]:not(.scrub)  { transform: translateX(-30px); }
-    html.js [data-animate="right"]:not(.scrub) { transform: translateX(30px); }
-    html.js [data-animate="zoom"]:not(.scrub)  { transform: scale(0.94) translateY(12px); }
-    html.js [data-animate="wipe"]:not(.scrub)  { transform: none; clip-path: inset(0 100% 0 0); }
-    html.js [data-animate]:not(.scrub).in { opacity: 1; transform: none; clip-path: inset(0 0 0 0); }
+    html.js .h-in { opacity: 0; }
+    html.js .reveal { opacity: 0; transform: translateY(22px); }
+    html.js .reveal--left  { transform: translateX(-28px); }
+    html.js .reveal--right { transform: translateX(28px); }
+    html.js .reveal--zoom  { transform: scale(0.94) translateY(10px); }
+    html:not(.js) .reveal,
+    html:not(.js) .reveal--left,
+    html:not(.js) .reveal--right,
+    html:not(.js) .reveal--zoom { opacity: 1; transform: none; }
 
     /* ---------- Nav ---------- */
     header.nav {
       position: sticky; top: 0; z-index: 50;
       backdrop-filter: blur(14px);
-      background: rgba(7, 11, 20, 0.78);
-      border-bottom: 1px solid var(--border);
+      background: rgba(7, 11, 20, 0.68);
+      border-bottom: 1px solid transparent;
+      transition: background .25s var(--ease), border-color .25s var(--ease), box-shadow .25s var(--ease);
+    }
+    header.nav.scrolled {
+      background: rgba(7, 11, 20, 0.86);
+      border-bottom-color: var(--border);
+      box-shadow: 0 12px 30px rgba(0,0,0,.25);
     }
     .nav-inner {
       display: flex; align-items: center; justify-content: space-between;
-      height: 64px; gap: 24px;
+      height: var(--nav-h); gap: 24px;
     }
     .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.02em; font-size: 1.05rem; }
     .brand svg { display: block; }
     .brand em { font-style: normal; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
-    nav.links { display: flex; gap: 4px; align-items: center; }
+    nav.links { display: flex; gap: 2px; align-items: center; flex-wrap: wrap; }
     nav.links a {
-      padding: 8px 12px; border-radius: 8px; font-size: 0.9rem; color: var(--muted); font-weight: 500;
+      position: relative;
+      padding: 8px 11px; border-radius: 8px; font-size: 0.87rem; color: var(--muted); font-weight: 500;
       transition: color .18s, background .18s;
       white-space: nowrap;
     }
+    nav.links a::after {
+      content: ""; position: absolute; left: 11px; right: 11px; bottom: 4px; height: 1.5px;
+      background: var(--grad); transform: scaleX(0); transform-origin: left; transition: transform .25s var(--ease);
+    }
     nav.links a:hover, nav.links a.active { color: var(--text); background: var(--surface); }
+    nav.links a.active::after { transform: scaleX(1); }
     .nav-cta {
       display: inline-flex; align-items: center; gap: 8px;
       font-family: var(--mono); font-size: 0.8rem; font-weight: 600;
       border: 1px solid var(--border-strong); border-radius: 999px;
       padding: 7px 14px; color: var(--green);
-      transition: border-color .18s, box-shadow .18s;
+      transition: border-color .18s, box-shadow .18s, transform .18s;
     }
-    .nav-cta:hover { border-color: rgba(52, 211, 153, 0.55); box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.08); }
+    .nav-cta:hover { border-color: rgba(52, 211, 153, 0.55); box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.08); transform: translateY(-1px); }
     .nav-cta .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
     @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(52,211,153,.45);} 55% { box-shadow: 0 0 0 6px rgba(52,211,153,0);} }
 
     .menu-btn { display: none; background: none; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; cursor: pointer; color: var(--text); }
 
-    @media (max-width: 920px) {
+    @media (max-width: 1040px) {
       nav.links {
-        display: none; position: absolute; top: 64px; left: 0; right: 0;
+        display: none; position: absolute; top: var(--nav-h); left: 0; right: 0;
         flex-direction: column; align-items: stretch; gap: 2px;
         background: rgba(7, 11, 20, 0.97); border-bottom: 1px solid var(--border);
         padding: 10px 16px 16px;
       }
       nav.links.open { display: flex; }
       nav.links a { padding: 12px; font-size: 1rem; }
+      nav.links a::after { display: none; }
       .menu-btn { display: block; }
       .nav-cta span.label { display: none; }
     }
 
     /* ---------- Hero ---------- */
-    /* entrada em cascata no carregamento */
-    html.js .h-in { opacity: 0; animation: rise 0.85s var(--ease) forwards; }
-    html.js .h-d1 { animation-delay: 0.05s; }
-    html.js .h-d2 { animation-delay: 0.18s; }
-    html.js .h-d3 { animation-delay: 0.32s; }
-    html.js .h-d4 { animation-delay: 0.46s; }
-    html.js .terminal-wrap.h-in { animation-name: riseZoom; animation-duration: 1s; }
-    @keyframes rise { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
-    @keyframes riseZoom { from { opacity: 0; transform: translateY(34px) scale(0.96); } to { opacity: 1; transform: none; } }
+    .hero { position: relative; padding: 96px 0 64px; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; }
+    .hero-graph { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; overflow: visible; }
+    .hero-graph .hg-line { fill: none; stroke: var(--cyan); stroke-width: 1.1; opacity: .5; }
+    html.js .hero-graph .hg-line { stroke-dasharray: 1; stroke-dashoffset: 1; }
+    html:not(.js) .hero-graph .hg-line { stroke-dasharray: none; }
+    .hero-graph .hg-node { fill: var(--green); }
+    .hero-graph .hg-ring { fill: none; stroke: var(--green); stroke-width: 1; opacity: .35; }
+    html.js .hero-graph .hg-node, html.js .hero-graph .hg-ring { opacity: 0; transform-box: fill-box; transform-origin: center; transform: scale(0.4); }
+    html:not(.js) .hero-graph .hg-node, html:not(.js) .hero-graph .hg-ring { opacity: 1; transform: none; }
 
-    /* saída sutil amarrada ao scroll (progressive enhancement) */
-    @supports (animation-timeline: view()) {
-      html.sda .hero {
-        animation: heroOut linear both;
-        animation-timeline: view();
-        animation-range: exit 0% exit 62%;
-      }
-      @keyframes heroOut {
-        to { opacity: 0.22; transform: translateY(-42px) scale(0.97); }
-      }
-    }
-
-    .hero { padding: 96px 0 64px; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; }
+    .hero > div, .hero > .terminal-wrap { position: relative; z-index: 1; }
     .badge {
       display: inline-flex; align-items: center; gap: 8px;
       font-size: 0.8rem; font-weight: 600; color: var(--amber);
@@ -191,6 +190,8 @@
 
     /* terminal */
     .terminal-wrap { position: relative; }
+    html.js .terminal-wrap { opacity: 0; transform: translateY(30px) scale(0.95) rotateX(6deg); transform-origin: bottom center; }
+    html:not(.js) .terminal-wrap { opacity: 1; transform: none; }
     .radar {
       position: absolute; inset: -70px -40px auto auto; width: 340px; height: 340px;
       opacity: .5; pointer-events: none;
@@ -223,9 +224,7 @@
     .t-cmd { color: var(--text); }
     .t-cmd .p { color: var(--green); }
     .t-cmd .flag { color: var(--cyan); }
-    .t-line { white-space: pre; color: var(--muted); opacity: 0; transform: translateY(4px); }
-    .t-line.show { animation: lineIn .35s forwards; }
-    @keyframes lineIn { to { opacity: 1; transform: none; } }
+    .t-line { white-space: pre; color: var(--muted); }
     .j-key { color: var(--cyan); } .j-str { color: var(--green); } .j-num { color: var(--amber); } .j-punc { color: var(--faint); }
     .cursor { display: inline-block; width: 8px; height: 15px; background: var(--green); vertical-align: -2px; animation: blink 1s steps(1) infinite; }
     @keyframes blink { 50% { opacity: 0; } }
@@ -248,6 +247,39 @@
       .stat:nth-child(n+3) { border-top: 1px solid var(--border); }
     }
 
+    /* ---------- Jornada ---------- */
+    .journey { padding: 72px 0; overflow: hidden; }
+    .journey-inner { text-align: center; }
+    .journey-eyebrow {
+      font-family: var(--mono); font-size: 0.74rem; font-weight: 600; letter-spacing: 0.16em;
+      text-transform: uppercase; color: var(--faint); margin-bottom: 28px;
+    }
+    .journey-stage { position: relative; min-height: 30vh; display: flex; align-items: center; justify-content: center; }
+    .journey.pinned .journey-stage { position: sticky; top: var(--nav-h); height: calc(100vh - var(--nav-h)); min-height: 0; }
+    .journey.pinned { height: 260vh; }
+    .journey-words {
+      list-style: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+      gap: 14px 10px; max-width: 620px; margin-inline: auto; position: relative;
+    }
+    .j-word {
+      font-family: var(--mono); font-weight: 600; font-size: clamp(1rem, 2.4vw, 1.4rem);
+      color: var(--muted); padding: 10px 18px; border: 1px solid var(--border); border-radius: 999px;
+      background: var(--surface); white-space: nowrap;
+    }
+    .j-word::after { content: "→"; margin-left: 12px; color: var(--faint); font-weight: 400; }
+    .j-word:last-child::after { content: ""; margin: 0; }
+    .j-word.j-final { color: var(--green); border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.08); }
+    .journey.pinned .journey-words { position: absolute; inset: 0; }
+    .journey.pinned .j-word { position: absolute; top: 50%; left: 50%; }
+    .journey.pinned .j-word::after { display: none; }
+    @media (max-width: 860px) {
+      .journey.pinned { height: auto; }
+      .journey.pinned .journey-stage { position: static; height: auto; }
+      .journey.pinned .journey-words { position: static; flex-wrap: wrap; }
+      .journey.pinned .j-word { position: static; }
+      .journey.pinned .j-word::after { display: inline; }
+    }
+
     /* ---------- Seções ---------- */
     section.block { padding: 88px 0; }
     .kicker {
@@ -255,9 +287,10 @@
       text-transform: uppercase; color: var(--green); margin-bottom: 12px;
       display: flex; align-items: center; gap: 10px;
     }
-    .kicker::before { content: ""; width: 26px; height: 2px; background: var(--grad); border-radius: 2px; transform-origin: left; }
-    html.js [data-animate]:not(.in):not(.scrub) .kicker::before { animation: kickerGrow 1s var(--ease) forwards; animation-delay: calc(var(--d, 0ms) + 150ms); }
-    @keyframes kickerGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    .kicker::before { content: ""; width: 26px; height: 2px; background: var(--grad); border-radius: 2px; transform-origin: left; transform: scaleX(0); }
+    .reveal.is-visible .kicker::before { animation: kickerGrow .8s var(--ease) forwards; animation-delay: .15s; }
+    html:not(.js) .kicker::before { transform: scaleX(1); }
+    @keyframes kickerGrow { to { transform: scaleX(1); } }
     h2 { font-size: clamp(1.6rem, 3vw, 2.2rem); letter-spacing: -0.02em; font-weight: 800; margin-bottom: 16px; }
     .section-lead { color: var(--muted); max-width: 68ch; font-size: 1.02rem; }
     .section-head { margin-bottom: 44px; }
@@ -286,13 +319,28 @@
       .about-grid, .about-cols { grid-template-columns: 1fr; }
     }
 
+    /* ---------- pin-stage genérico (dashboard / portas / arquitetura) ---------- */
+    .pin-stage { position: relative; }
+    .pin-sticky {
+      position: sticky; top: var(--nav-h); height: calc(100vh - var(--nav-h));
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    @media (max-width: 860px) {
+      .pin-stage { height: auto !important; }
+      .pin-sticky { position: static; height: auto; overflow: visible; padding: 12px 0; }
+    }
+
     /* ---------- Preview do dashboard ---------- */
-    .shot-zone { perspective: 1200px; }
+    .pin-stage--dash { height: 380vh; }
+    .shot-zone { perspective: 1200px; width: 100%; }
     .shot {
       max-width: 900px; margin-inline: auto;
       background: #0a101e; border: 1px solid var(--border-strong); border-radius: 16px;
       overflow: hidden; box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(34, 211, 238, 0.05);
     }
+    html.js .shot { opacity: 0; transform: scale(0.92) rotateX(8deg) translateY(20px); transform-origin: center top; }
+    html:not(.js) .shot { opacity: 1; transform: none; }
     .shot-bar {
       display: flex; align-items: center; gap: 8px; padding: 12px 16px;
       border-bottom: 1px solid var(--border); background: rgba(148, 163, 184, 0.04);
@@ -332,8 +380,8 @@
       height: var(--h, 40%);
       transform-origin: bottom;
     }
-    html.js .shot.in .bar { animation: barGrow 0.9s var(--ease) both; animation-delay: calc(500ms + var(--i) * 80ms); }
-    @keyframes barGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+    html.js .bar { transform: scaleY(0); }
+    html:not(.js) .bar { transform: none; }
     .chart-axis { display: flex; gap: 8px; padding: 6px 16px 12px; }
     .chart-axis span { flex: 1; text-align: center; font-family: var(--mono); font-size: 0.6rem; color: var(--faint); }
 
@@ -344,10 +392,9 @@
       border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px;
       font-family: var(--mono); font-size: 0.74rem; color: var(--muted);
       background: rgba(2, 6, 14, 0.4);
-      opacity: 0; transform: scale(0.9) translateY(6px);
     }
-    html.js .shot.in .pchip { animation: chipPop 0.5s var(--ease) both; animation-delay: calc(750ms + var(--i) * 60ms); }
-    @keyframes chipPop { to { opacity: 1; transform: none; } }
+    html.js .pchip { opacity: 0; transform: scale(0.9) translateY(6px); }
+    html:not(.js) .pchip { opacity: 1; transform: none; }
     .pchip i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .pchip.pub i { background: var(--green); box-shadow: 0 0 8px rgba(52, 211, 153, 0.6); }
     .pchip.busy i { background: var(--amber); }
@@ -363,14 +410,8 @@
       font-size: 0.78rem; color: var(--faint);
     }
     .shot-note code { font-family: var(--mono); color: var(--green); }
-    .shot-layer { opacity: 0; transform: translateY(14px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
-    html.js .shot.in .shot-layer { opacity: 1; transform: none; }
-    html.js .shot.in .sl-side { transition-delay: 250ms; }
-    html.js .shot.in .sl-kpis { transition-delay: 400ms; }
-    html.js .shot.in .sl-panel { transition-delay: 550ms; }
-    html.js .shot:not(.in) .bar, html.js .shot:not(.in) .pchip { animation: none; }
-    html:not(.js) .shot-layer, html:not(.js) .pchip { opacity: 1; transform: none; }
-    html:not(.js) .bar { transform: none; }
+    .shot-layer { opacity: 0; transform: translateY(14px); }
+    html:not(.js) .shot-layer { opacity: 1; transform: none; }
     @media (max-width: 720px) {
       .shot-body { grid-template-columns: 56px 1fr; }
       .side-item span { display: none; }
@@ -381,7 +422,89 @@
       .portmap { grid-template-columns: 1fr 1fr; }
     }
 
+    /* ---------- Portas ---------- */
+    .pin-stage--ports { height: 300vh; }
+    .port-stage-inner { width: 100%; max-width: 980px; margin-inline: auto; }
+    .port-groups { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+    .port-group { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; background: var(--surface); }
+    .port-group h3 { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .port-group h3 i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .port-group.g-published h3 i { background: var(--green); box-shadow: 0 0 8px rgba(52,211,153,.6); }
+    .port-group.g-occupied h3 i { background: var(--amber); }
+    .port-group.g-available h3 i { background: transparent; border: 1.5px dashed var(--faint); }
+    .port-nodes { display: flex; flex-wrap: wrap; gap: 8px; }
+    .port-node {
+      font-family: var(--mono); font-size: 0.86rem; font-weight: 600; color: var(--text);
+      border: 1px solid var(--border-strong); border-radius: 8px; padding: 7px 12px;
+      background: rgba(2, 6, 14, 0.5); display: inline-flex; flex-direction: column; line-height: 1.25;
+    }
+    .port-node small { font-weight: 500; font-size: 0.6rem; color: var(--faint); text-transform: none; }
+    .g-published .port-node { border-color: rgba(52, 211, 153, 0.4); }
+    .g-occupied .port-node { border-color: rgba(251, 191, 36, 0.35); }
+    .g-available .port-node { border-style: dashed; color: var(--faint); }
+    html.js .port-node { opacity: 0; }
+    html:not(.js) .port-node { opacity: 1; }
+    .port-legend { justify-content: center; margin-top: 20px; }
+    @media (max-width: 860px) {
+      .port-groups { grid-template-columns: 1fr; }
+    }
+
+    /* ---------- Redes ---------- */
+    .netgraph-wrap { position: relative; max-width: 760px; margin-inline: auto; }
+    .netgraph { width: 100%; height: auto; overflow: visible; }
+    .netgraph .ng-node { fill: var(--bg-soft); stroke: var(--border-strong); stroke-width: 1.4; }
+    .netgraph .ng-node.hub { stroke: rgba(52, 211, 153, 0.55); fill: rgba(52, 211, 153, 0.08); }
+    .netgraph .ng-edge { fill: none; stroke: var(--cyan); stroke-width: 1.4; opacity: .55; }
+    html.js .netgraph .ng-edge { stroke-dasharray: 1; stroke-dashoffset: 1; }
+    html:not(.js) .netgraph .ng-edge { stroke-dasharray: none; }
+    .netgraph .ng-pulse { fill: var(--green); opacity: 0; }
+    html.js .netgraph .ng-node, html.js .netgraph .ng-node.hub { opacity: 0; transform-box: fill-box; transform-origin: center; transform: scale(.5); }
+    html:not(.js) .netgraph .ng-node { opacity: 1; transform: none; }
+    .ng-labels { position: absolute; inset: 0; pointer-events: none; }
+    .ng-label {
+      position: absolute; transform: translate(-50%, -50%);
+      font-family: var(--mono); font-size: 0.72rem; text-align: center; color: var(--muted);
+      white-space: nowrap;
+    }
+    .ng-label b { display: block; color: var(--text); font-size: 0.78rem; }
+    html.js .ng-label { opacity: 0; }
+    html:not(.js) .ng-label { opacity: 1; }
+
     /* features */
+    .feature-beats { display: grid; gap: 14px; margin-bottom: 20px; }
+    .beat {
+      display: grid; grid-template-columns: 1fr 220px; gap: 20px; align-items: center;
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 26px;
+      background: var(--surface);
+    }
+    .beat-icon {
+      width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+      background: rgba(34, 211, 238, 0.1); border: 1px solid rgba(34, 211, 238, 0.25);
+      margin-bottom: 12px; color: var(--cyan);
+    }
+    .beat h3 { font-size: 1.02rem; margin-bottom: 6px; }
+    .beat p { color: var(--muted); font-size: 0.9rem; }
+    .beat p code { font-family: var(--mono); font-size: 0.85em; color: var(--green); background: rgba(52,211,153,.09); padding: 1px 5px; border-radius: 4px; }
+    .beat-demo { display: flex; align-items: center; justify-content: center; height: 84px; }
+    .bd-containers { display: flex; gap: 8px; }
+    .bd-c { width: 30px; height: 40px; border-radius: 6px; border: 1px solid var(--border-strong); background: rgba(2,6,14,.5); position: relative; }
+    .bd-c i { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+    html.js .bd-c i.on { background: var(--faint); }
+    .bd-ports { display: flex; gap: 8px; }
+    .bd-p {
+      font-family: var(--mono); font-size: 0.72rem; padding: 6px 10px; border-radius: 6px;
+      border: 1px solid var(--border); color: var(--faint); background: rgba(2,6,14,.5);
+    }
+    .bd-net { width: 100%; max-width: 160px; }
+    .bd-heart { width: 100%; max-width: 150px; }
+    .bd-heart path, .bd-net path { fill: none; stroke: var(--green); stroke-width: 2; }
+    html.js .bd-net path, html.js .bd-heart path { stroke-dasharray: 1; stroke-dashoffset: 1; }
+    html:not(.js) .bd-net path, html:not(.js) .bd-heart path { stroke-dasharray: none; }
+    @media (max-width: 780px) {
+      .beat { grid-template-columns: 1fr; }
+      .beat-demo { justify-content: flex-start; }
+    }
+
     .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
     .feature {
       border: 1px solid var(--border); border-radius: var(--radius); padding: 24px;
@@ -432,10 +555,13 @@
     @media (max-width: 720px) { .ep-desc { display: none; } }
 
     /* arquitetura */
+    .pin-stage--arch { height: 350vh; }
     .arch {
       border: 1px solid var(--border); border-radius: var(--radius);
       background: var(--bg-soft); padding: 40px clamp(16px, 4vw, 48px);
       display: flex; flex-direction: column; align-items: center; gap: 0;
+      width: 100%; max-width: 900px; margin-inline: auto;
+      transition: transform .1s linear;
     }
     .arch-row { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; width: 100%; }
     .node {
@@ -443,6 +569,8 @@
       background: rgba(148, 163, 184, 0.04); min-width: 220px; max-width: 320px; flex: 1;
       position: relative;
     }
+    html.js .node { opacity: 0; transform: translateY(16px) scale(.96); }
+    html:not(.js) .node { opacity: 1; transform: none; }
     .node b { display: block; font-size: 0.95rem; margin-bottom: 4px; }
     .node small { color: var(--muted); font-size: 0.8rem; display: block; line-height: 1.5; }
     .node small strong { color: var(--muted); }
@@ -457,22 +585,15 @@
     .node.proxy .tag { color: var(--red); border-color: rgba(248, 113, 113, 0.4); }
     .node.core { border-color: rgba(52, 211, 153, 0.45); background: rgba(52, 211, 153, 0.05); box-shadow: 0 0 40px rgba(52, 211, 153, 0.07); }
     .node.core .tag { color: var(--green); border-color: rgba(52, 211, 153, 0.45); }
-    .arrow { height: 48px; display: grid; place-items: start center; color: var(--faint); padding-top: 4px; }
-    .grow { display: block; height: 34px; transform-origin: top center; }
-    html.js .arrow .grow { transform: scaleY(0); transition: transform .65s var(--ease); }
-    html.js .arrow.in .grow { transform: none; }
-    .grow svg { animation: flowDown 1.6s ease-in-out infinite; }
-    @keyframes flowDown { 0%,100% { transform: translateY(-3px); opacity: .5;} 50% { transform: translateY(3px); opacity: 1; } }
-    @supports (animation-timeline: view()) {
-      html.sda .arrow .grow {
-        transform: scaleY(0); transition: none;
-        animation: growY linear both;
-        animation-timeline: view();
-        animation-range: entry 45% cover 42%;
-      }
-      @keyframes growY { to { transform: scaleY(1); } }
-    }
+    .arrow { height: 48px; display: grid; place-items: start center; color: var(--faint); padding-top: 4px; position: relative; }
+    .grow { display: block; height: 34px; }
+    .grow svg .grow-path { opacity: .8; }
+    html.js .grow-path { stroke-dasharray: 1; stroke-dashoffset: 1; }
+    html:not(.js) .grow-path { stroke-dasharray: none; }
+    .arch-pulse { fill: var(--green); opacity: 0; }
     .arch-note { margin-top: 28px; font-size: 0.82rem; color: var(--faint); text-align: center; max-width: 74ch; }
+    html.js .arch-note { opacity: 0; }
+    html:not(.js) .arch-note { opacity: 1; }
     .arch-note code { font-family: var(--mono); font-size: 0.95em; color: var(--muted); }
     .arch-note strong { color: var(--muted); }
 
@@ -509,12 +630,15 @@
     .term-bar i { width: 11px; height: 11px; border-radius: 50%; display: block; }
     .term-bar i:nth-child(1) { background: #ff5f57; } .term-bar i:nth-child(2) { background: #febc2e; } .term-bar i:nth-child(3) { background: #28c840; }
     .term-title { margin-inline: auto; font-family: var(--mono); font-size: 0.72rem; color: var(--faint); }
-    .term-lines { flex: 1; padding: 18px; font-family: var(--mono); font-size: 0.8rem; line-height: 1.75; min-height: 250px; overflow: hidden; }
-    .tr { white-space: pre-wrap; word-break: break-word; color: var(--muted); opacity: 0; transform: translateY(4px); }
-    .tr.show { animation: lineIn 0.3s forwards; }
+    .term-lines { flex: 1; padding: 18px 18px 6px; font-family: var(--mono); font-size: 0.8rem; line-height: 1.75; min-height: 220px; overflow: hidden; }
+    .tr { white-space: pre-wrap; word-break: break-word; color: var(--muted); }
     .t-prompt { color: var(--green); font-weight: 600; }
     .t-flag { color: var(--cyan); }
     .t-comment { color: var(--faint); font-style: italic; }
+    .term-checklist { padding: 4px 18px 18px; display: grid; gap: 6px; }
+    .ic-item { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 0.78rem; color: var(--muted); opacity: 0; }
+    .ic-item svg { flex-shrink: 0; color: var(--green); }
+    .ic-item .ic-path { stroke-dasharray: 1; stroke-dashoffset: 1; }
     .req-card {
       border: 1px solid var(--border); border-radius: var(--radius); padding: 26px;
       background: linear-gradient(160deg, rgba(52, 211, 153, 0.06), transparent 55%), var(--surface);
@@ -528,9 +652,8 @@
       font-family: var(--mono); font-size: 0.78rem; font-weight: 500;
       border: 1px solid var(--border-strong); border-radius: 999px; padding: 7px 14px;
       color: var(--muted); background: rgba(2, 6, 14, 0.5);
-      opacity: 0; transform: translateY(8px) scale(0.94);
     }
-    html.js .req-chips.in .chip { animation: chipPop 0.45s var(--ease) both; animation-delay: calc(var(--i) * 70ms); }
+    html.js .chip { opacity: 0; transform: translateY(8px) scale(0.94); }
     html:not(.js) .chip { opacity: 1; transform: none; }
     .req-foot { margin-top: auto; padding-top: 18px; font-size: 0.8rem; color: var(--faint); border-top: 1px dashed var(--border); }
     .req-foot strong { color: var(--muted); }
@@ -564,15 +687,6 @@
       position: absolute; left: 12px; top: 8px; bottom: 8px; width: 2px;
       background: var(--grad); border-radius: 2px;
       transform: scaleY(0); transform-origin: top center;
-    }
-    @supports (animation-timeline: view()) {
-      html.sda .tl-fill {
-        transition: none;
-        animation: growY2 linear both;
-        animation-timeline: view();
-        animation-range: entry 20% cover 82%;
-      }
-      @keyframes growY2 { to { transform: scaleY(1); } }
     }
     .tl-item {
       position: relative; border: 1px solid var(--border); border-radius: var(--radius);
@@ -639,21 +753,10 @@
     .to-top { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); transition: color .15s; }
     .to-top:hover { color: var(--green); }
 
-    /* Elementos scrub ficam visíveis quando o navegador tem suporte
-       nativo (o CSS cuida deles; o observer JS os ignora). */
-    html.sda [data-animate].scrub {
-      opacity: 1;
-      transform: none;
-      clip-path: inset(0 0 0 0);
-      transition: none;
-    }
-
     @media (max-width: 720px) {
       .hero { grid-template-columns: 1fr; padding: 56px 0 40px; gap: 42px; }
       .radar { display: none; }
-      @supports (animation-timeline: view()) {
-        html.sda .hero { animation: none; }
-      }
+      .hero-graph { display: none; }
       .install-grid { grid-template-columns: 1fr; }
       .foot-grid { grid-template-columns: 1fr; gap: 28px; }
       section.block { padding: 64px 0; }
@@ -668,15 +771,20 @@
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
       }
-      html.js [data-animate], html.js .h-in, html.js .tl-item, html.js .term-lines .tr,
-      html.js .req-chips .chip, html.js .shot-layer, html.js .shot .pchip, html.js .shot .bar,
-      html.js .arrow .grow, html.js .tl-fill {
-        animation: none !important; transition: none !important;
-        opacity: 1 !important; transform: none !important; clip-path: inset(0 0 0 0);
+      html.js .reveal, html.js .reveal--left, html.js .reveal--right, html.js .reveal--zoom,
+      html.js .terminal-wrap, html.js .shot, html.js .bar, html.js .pchip, html.js .node,
+      html.js .chip, html.js .hero-graph .hg-node, html.js .hero-graph .hg-ring,
+      html.js .port-node, html.js .netgraph .ng-node, html.js .ng-label, html.js .arch-note {
+        opacity: 1 !important; transform: none !important;
       }
-      html.sda .hero, html.sda .arrow .grow, html.sda .tl-fill, .sweep, .grow svg {
-        animation: none !important;
-      }
+      .pin-stage { height: auto !important; }
+      .pin-sticky { position: static !important; height: auto !important; overflow: visible !important; }
+      .journey.pinned { height: auto !important; }
+      .journey.pinned .journey-stage { position: static !important; height: auto !important; }
+      .journey.pinned .journey-words { position: static !important; }
+      .journey.pinned .j-word { position: static !important; }
+      .journey.pinned .j-word::after { display: inline !important; }
+      .sweep { animation: none !important; }
     }
   </style>
 </head>
@@ -701,7 +809,9 @@
       </button>
       <nav class="links" id="navLinks" aria-label="Navegação principal">
         <a href="#sobre">O que é</a>
-        <a href="#preview">Preview</a>
+        <a href="#preview">Dashboard</a>
+        <a href="#portas">Portas</a>
+        <a href="#redes">Redes</a>
         <a href="#funcionalidades">Funcionalidades</a>
         <a href="#arquitetura">Arquitetura</a>
         <a href="#seguranca">Segurança</a>
@@ -715,12 +825,34 @@
   <main id="topo">
 
     <!-- ================= HERO ================= -->
-    <section class="container hero" aria-label="Apresentação">
+    <section class="hero container" aria-label="Apresentação">
+      <svg class="hero-graph" id="heroGraph" viewBox="0 0 640 420" aria-hidden="true">
+        <path class="hg-line" data-edge pathLength="1" d="M80,70 L300,150" />
+        <path class="hg-line" data-edge pathLength="1" d="M230,40 L300,150" />
+        <path class="hg-line" data-edge pathLength="1" d="M390,90 L300,150" />
+        <path class="hg-line" data-edge pathLength="1" d="M300,150 L150,230" />
+        <path class="hg-line" data-edge pathLength="1" d="M300,150 L350,270" />
+        <path class="hg-line" data-edge pathLength="1" d="M350,270 L520,240" />
+        <circle class="hg-ring" cx="80" cy="70" r="10" />
+        <circle class="hg-node" cx="80" cy="70" r="3.5" />
+        <circle class="hg-ring" cx="230" cy="40" r="10" />
+        <circle class="hg-node" cx="230" cy="40" r="3.5" />
+        <circle class="hg-ring" cx="390" cy="90" r="10" />
+        <circle class="hg-node" cx="390" cy="90" r="3.5" />
+        <circle class="hg-ring" cx="300" cy="150" r="13" />
+        <circle class="hg-node" cx="300" cy="150" r="4.5" />
+        <circle class="hg-ring" cx="150" cy="230" r="10" />
+        <circle class="hg-node" cx="150" cy="230" r="3.5" />
+        <circle class="hg-ring" cx="350" cy="270" r="10" />
+        <circle class="hg-node" cx="350" cy="270" r="3.5" />
+        <circle class="hg-ring" cx="520" cy="240" r="10" />
+        <circle class="hg-node" cx="520" cy="240" r="3.5" />
+      </svg>
       <div>
-        <span class="badge h-in h-d1"><span class="dot" aria-hidden="true"></span>EM DESENVOLVIMENTO ATIVO · FASE 4</span>
-        <h1 class="h-in h-d2">Sua homelab Docker,<br />finalmente <span class="grad">visível</span>.</h1>
-        <p class="lead h-in h-d3">O PortWatch descobre containers, portas publicadas e livres no host e redes Docker — e expõe tudo por uma API REST de <strong>somente-observação</strong>. Leitura via proxy; nunca uma escrita no daemon.</p>
-        <div class="cta-row h-in h-d4">
+        <span class="badge h-in"><span class="dot" aria-hidden="true"></span>EM DESENVOLVIMENTO ATIVO · FASE 4</span>
+        <h1 class="h-in" id="heroTitle">Sua homelab Docker,<br />finalmente <span class="grad">visível</span>.</h1>
+        <p class="lead h-in">O PortWatch descobre containers, portas publicadas e livres no host e redes Docker — e expõe tudo por uma API REST de <strong>somente-observação</strong>. Leitura via proxy; nunca uma escrita no daemon.</p>
+        <div class="cta-row h-in">
           <a class="btn btn-primary" href="#preview">
             Explorar o preview
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
@@ -729,7 +861,7 @@
         </div>
       </div>
 
-      <div class="terminal-wrap h-in h-d4">
+      <div class="terminal-wrap">
         <div class="radar" aria-hidden="true">
           <i class="ring"></i><i class="ring"></i><i class="ring"></i>
           <i class="sweep"></i>
@@ -752,15 +884,31 @@
       </div>
     </section>
 
+    <!-- ================= JORNADA ================= -->
+    <section class="journey" id="jornada" aria-label="Da infraestrutura ao PortWatch">
+      <div class="container journey-inner">
+        <p class="journey-eyebrow">de baixo pra cima</p>
+        <div class="journey-stage">
+          <ol class="journey-words" id="journeyWords">
+            <li class="j-word">Servidor</li>
+            <li class="j-word">Docker</li>
+            <li class="j-word">Containers</li>
+            <li class="j-word">Ports</li>
+            <li class="j-word j-final">PortWatch</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
     <!-- ================= SOBRE ================= -->
     <section id="sobre" class="block container">
-      <div class="section-head" data-animate>
+      <div class="section-head reveal">
         <p class="kicker">01 · O que é</p>
         <h2>Observação sem intrusão</h2>
         <p class="section-lead">PortWatch é um projeto pessoal de monitoramento para homelabs com Docker. Ele responde, em um só lugar: <em>o que está rodando, em quais portas, em quais redes</em> — sem instalar nada nos containers e sem arriscar o daemon.</p>
       </div>
       <div class="about-grid">
-        <div class="about-text" data-animate>
+        <div class="about-text reveal">
           <p>A coleta acontece pelo <strong>Docker Engine API</strong>, sempre intermediada pelo <strong>docker-socket-proxy</strong>: um componente que expõe apenas os endpoints de leitura do daemon. O módulo de coleta (<strong>netprobe</strong>) transforma essas respostas em um resumo consolidado, servido pela API <strong>FastAPI</strong> em <code>/api/v1/system/summary</code>.</p>
           <p>O consumo é livre: dashboard web, terminal com <code>curl</code> ou qualquer cliente HTTP. Cada decisão estrutural está registrada nos <strong>ADRs</strong> (Architecture Decision Records) do repositório.</p>
           <div class="about-cols">
@@ -770,7 +918,7 @@
             <div class="mini-card"><b>Pensado para homelab</b><p>Leve, auto-hospedado e simples de rodar com um <code>make dev</code>.</p></div>
           </div>
         </div>
-        <aside class="objective-card" data-animate="left" style="--d:120ms">
+        <aside class="objective-card reveal reveal--left">
           <h3>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
             Objetivo
@@ -786,54 +934,58 @@
       </div>
     </section>
 
-    <!-- ================= PREVIEW ================= -->
+    <!-- ================= PREVIEW / DASHBOARD ================= -->
     <section id="preview" class="block container">
-      <div class="section-head" data-animate>
-        <p class="kicker">02 · Preview</p>
+      <div class="section-head reveal">
+        <p class="kicker">02 · Dashboard</p>
         <h2>Um painel, toda a história</h2>
-        <p class="section-lead">O dashboard resume o estado do host em três camadas: números de topo, atividade recente e o mapa de portas. Role e veja cada camada se revelar.</p>
+        <p class="section-lead">Role para montar o dashboard peça por peça: moldura, barra lateral, containers, portas e, por fim, redes e indicadores.</p>
       </div>
 
-      <div class="shot-zone" data-animate="zoom">
-        <div class="shot" id="dashShot" role="img" aria-label="Prévia ilustrativa do dashboard do PortWatch com dados fictícios">
-          <div class="shot-bar shot-layer" aria-hidden="true"><i></i><i></i><i></i><span class="shot-url">localhost:5173 — PortWatch</span></div>
-          <div class="shot-body">
-            <div class="shot-side shot-layer sl-side" aria-hidden="true">
-              <span class="side-item on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span>Visão geral</span></span>
-              <span class="side-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1"/><rect x="3" y="13" width="18" height="7" rx="1"/></svg><span>Containers</span></span>
-              <span class="side-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg><span>Portas</span></span>
-              <span class="side-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="m7 11 10-5M7 13l10 5"/></svg><span>Redes</span></span>
-              <span class="side-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 17V7m5 10V4m5 13v-6m5 6V9"/></svg><span>Métricas</span></span>
-            </div>
-            <div class="shot-main">
-              <div class="kpis shot-layer sl-kpis" aria-hidden="true">
-                <div class="kpi"><small>containers</small><b>9<em>+2 hoje</em></b></div>
-                <div class="kpi"><small>portas usadas</small><b>14<em>de 31 ativas</em></b></div>
-                <div class="kpi"><small>redes docker</small><b>5<em>todas internas</em></b></div>
-              </div>
-              <div class="panel shot-layer sl-panel" aria-hidden="true">
-                <div class="panel-head"><span>containers em execução · últimas 12h</span><span>fictício</span></div>
-                <div class="chart">
-                  <i class="bar" style="--h:42%;--i:0"></i><i class="bar" style="--h:58%;--i:1"></i><i class="bar" style="--h:50%;--i:2"></i><i class="bar" style="--h:66%;--i:3"></i><i class="bar" style="--h:74%;--i:4"></i><i class="bar" style="--h:62%;--i:5"></i><i class="bar" style="--h:80%;--i:6"></i><i class="bar" style="--h:70%;--i:7"></i><i class="bar" style="--h:88%;--i:8"></i><i class="bar" style="--h:78%;--i:9"></i><i class="bar" style="--h:92%;--i:10"></i><i class="bar" style="--h:84%;--i:11"></i>
+      <div class="pin-stage pin-stage--dash" id="dashPin">
+        <div class="pin-sticky">
+          <div class="shot-zone">
+            <div class="shot" id="dashShot" role="img" aria-label="Prévia ilustrativa do dashboard do PortWatch com dados fictícios">
+              <div class="shot-bar shot-layer" aria-hidden="true"><i></i><i></i><i></i><span class="shot-url">localhost:5173 — PortWatch</span></div>
+              <div class="shot-body">
+                <div class="shot-side shot-layer sl-side" aria-hidden="true">
+                  <span class="side-item on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span>Visão geral</span></span>
+                  <span class="side-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1"/><rect x="3" y="13" width="18" height="7" rx="1"/></svg><span>Containers</span></span>
+                  <span class="side-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg><span>Portas</span></span>
+                  <span class="side-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="m7 11 10-5M7 13l10 5"/></svg><span>Redes</span></span>
+                  <span class="side-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 17V7m5 10V4m5 13v-6m5 6V9"/></svg><span>Métricas</span></span>
                 </div>
-                <div class="chart-axis" aria-hidden="true"><span>-12h</span><span>-10h</span><span>-8h</span><span>-6h</span><span>-4h</span><span>-2h</span><span>agora</span></div>
-              </div>
-              <div class="panel shot-layer sl-panel" aria-hidden="true">
-                <div class="panel-head"><span>mapa de portas do host</span><span>fictício</span></div>
-                <div class="portmap">
-                  <span class="pchip pub" style="--i:0"><i></i>:443 · nginx-proxy</span>
-                  <span class="pchip pub" style="--i:1"><i></i>:80 · nginx-proxy</span>
-                  <span class="pchip pub" style="--i:2"><i></i>:3000 · grafana</span>
-                  <span class="pchip busy" style="--i:3"><i></i>:5432 · postgres</span>
-                  <span class="pchip busy" style="--i:4"><i></i>:22 · sshd</span>
-                  <span class="pchip free" style="--i:5"><i></i>:8080 · livre</span>
-                  <span class="pchip free" style="--i:6"><i></i>:9090 · livre</span>
-                  <span class="pchip free" style="--i:7"><i></i>:6379 · livre</span>
-                </div>
-                <div class="legend">
-                  <b class="l-pub"><i></i>publicada</b>
-                  <b class="l-busy"><i></i>ocupada (não-publicada)</b>
-                  <b class="l-free"><i></i>livre no host</b>
+                <div class="shot-main">
+                  <div class="kpis shot-layer sl-kpis" aria-hidden="true">
+                    <div class="kpi"><small>containers</small><b data-kpi-count="9">0<em>+2 hoje</em></b></div>
+                    <div class="kpi"><small>portas usadas</small><b data-kpi-count="14">0<em>de 31 ativas</em></b></div>
+                    <div class="kpi"><small>redes docker</small><b data-kpi-count="5">0<em>todas internas</em></b></div>
+                  </div>
+                  <div class="panel shot-layer sl-panel" aria-hidden="true">
+                    <div class="panel-head"><span>containers em execução · últimas 12h</span><span>fictício</span></div>
+                    <div class="chart">
+                      <i class="bar" style="--h:42%;--i:0"></i><i class="bar" style="--h:58%;--i:1"></i><i class="bar" style="--h:50%;--i:2"></i><i class="bar" style="--h:66%;--i:3"></i><i class="bar" style="--h:74%;--i:4"></i><i class="bar" style="--h:62%;--i:5"></i><i class="bar" style="--h:80%;--i:6"></i><i class="bar" style="--h:70%;--i:7"></i><i class="bar" style="--h:88%;--i:8"></i><i class="bar" style="--h:78%;--i:9"></i><i class="bar" style="--h:92%;--i:10"></i><i class="bar" style="--h:84%;--i:11"></i>
+                    </div>
+                    <div class="chart-axis" aria-hidden="true"><span>-12h</span><span>-10h</span><span>-8h</span><span>-6h</span><span>-4h</span><span>-2h</span><span>agora</span></div>
+                  </div>
+                  <div class="panel shot-layer sl-panel" aria-hidden="true">
+                    <div class="panel-head"><span>mapa de portas do host</span><span>fictício</span></div>
+                    <div class="portmap">
+                      <span class="pchip pub" style="--i:0"><i></i>:443 · nginx-proxy</span>
+                      <span class="pchip pub" style="--i:1"><i></i>:80 · nginx-proxy</span>
+                      <span class="pchip pub" style="--i:2"><i></i>:3000 · grafana</span>
+                      <span class="pchip busy" style="--i:3"><i></i>:5432 · postgres</span>
+                      <span class="pchip busy" style="--i:4"><i></i>:22 · sshd</span>
+                      <span class="pchip free" style="--i:5"><i></i>:8080 · livre</span>
+                      <span class="pchip free" style="--i:6"><i></i>:9090 · livre</span>
+                      <span class="pchip free" style="--i:7"><i></i>:6379 · livre</span>
+                    </div>
+                    <div class="legend">
+                      <b class="l-pub"><i></i>publicada</b>
+                      <b class="l-busy"><i></i>ocupada (não-publicada)</b>
+                      <b class="l-free"><i></i>livre no host</b>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -843,47 +995,181 @@
       <p class="shot-note">Interface ilustrativa com dados fictícios — o dashboard real consome <code>GET /api/v1/system/summary</code>.</p>
     </section>
 
+    <!-- ================= PORTAS ================= -->
+    <section id="portas" class="block container">
+      <div class="section-head reveal">
+        <p class="kicker">03 · Portas</p>
+        <h2>Cada porta, um pequeno nó</h2>
+        <p class="section-lead">Publicadas, ocupadas e livres — o PortWatch agrupa o que encontra no host. Exemplo ilustrativo, com portas fictícias.</p>
+      </div>
+      <div class="pin-stage pin-stage--ports" id="portsPin">
+        <div class="pin-sticky">
+          <div class="port-stage-inner">
+            <div class="port-groups" id="portGroups">
+              <div class="port-group g-published">
+                <h3><i></i>publicadas</h3>
+                <div class="port-nodes">
+                  <span class="port-node">443<small>nginx-proxy</small></span>
+                  <span class="port-node">80<small>nginx-proxy</small></span>
+                  <span class="port-node">3000<small>grafana</small></span>
+                  <span class="port-node">8096<small>jellyfin</small></span>
+                </div>
+              </div>
+              <div class="port-group g-occupied">
+                <h3><i></i>ocupadas</h3>
+                <div class="port-nodes">
+                  <span class="port-node">5432<small>postgres</small></span>
+                  <span class="port-node">22<small>sshd</small></span>
+                  <span class="port-node">3100<small>loki</small></span>
+                  <span class="port-node">4533<small>navidrome</small></span>
+                </div>
+              </div>
+              <div class="port-group g-available">
+                <h3><i></i>livres no host</h3>
+                <div class="port-nodes">
+                  <span class="port-node">8080<small>livre</small></span>
+                  <span class="port-node">9090<small>livre</small></span>
+                  <span class="port-node">6379<small>livre</small></span>
+                  <span class="port-node">27017<small>livre</small></span>
+                </div>
+              </div>
+            </div>
+            <div class="legend port-legend" aria-hidden="true">
+              <b class="l-pub"><i></i>publicada</b>
+              <b class="l-busy"><i></i>ocupada (não-publicada)</b>
+              <b class="l-free"><i></i>livre no host</b>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="shot-note">Exemplo ilustrativo com portas fictícias — não reflete nenhum host real.</p>
+    </section>
+
+    <!-- ================= REDES ================= -->
+    <section id="redes" class="block container">
+      <div class="section-head reveal">
+        <p class="kicker">04 · Redes Docker</p>
+        <h2>Quem conversa com quem</h2>
+        <p class="section-lead">Um grafo simples: containers de exemplo conectados às redes Docker às quais pertencem.</p>
+      </div>
+      <div class="netgraph-wrap">
+        <svg class="netgraph" id="netGraph" viewBox="0 0 640 320" aria-hidden="true">
+          <path class="ng-edge" data-edge pathLength="1" d="M90,50 C200,50 220,110 320,110" />
+          <path class="ng-edge" data-edge pathLength="1" d="M90,140 C200,140 220,115 320,115" />
+          <path class="ng-edge" data-edge pathLength="1" d="M90,140 C220,180 250,235 320,235" />
+          <path class="ng-edge" data-edge pathLength="1" d="M90,230 C220,230 250,235 320,235" />
+          <path class="ng-edge" data-edge pathLength="1" d="M90,300 C220,290 250,240 320,235" />
+          <path class="ng-edge" data-edge pathLength="1" d="M360,112 C460,112 460,180 560,180" />
+          <path class="ng-edge" data-edge pathLength="1" d="M360,235 C460,235 460,180 560,180" />
+          <rect class="ng-node" x="55" y="35" width="70" height="30" rx="7" />
+          <rect class="ng-node" x="55" y="125" width="70" height="30" rx="7" />
+          <rect class="ng-node" x="55" y="215" width="70" height="30" rx="7" />
+          <rect class="ng-node" x="55" y="285" width="70" height="30" rx="7" />
+          <rect class="ng-node hub" x="320" y="94" width="120" height="36" rx="10" />
+          <rect class="ng-node hub" x="320" y="217" width="120" height="36" rx="10" />
+          <rect class="ng-node" x="560" y="162" width="70" height="36" rx="9" />
+          <circle class="ng-pulse" data-pulse r="3.5" />
+          <circle class="ng-pulse" data-pulse r="3.5" />
+          <circle class="ng-pulse" data-pulse r="3.5" />
+        </svg>
+        <div class="ng-labels" aria-hidden="true">
+          <span class="ng-label" style="left:14.06%;top:15.6%"><b>nginx-proxy</b>container</span>
+          <span class="ng-label" style="left:14.06%;top:43.75%"><b>grafana</b>container</span>
+          <span class="ng-label" style="left:14.06%;top:75%"><b>postgres</b>container</span>
+          <span class="ng-label" style="left:14.06%;top:93.75%"><b>navidrome</b>container</span>
+          <span class="ng-label" style="left:62.5%;top:35%"><b>frontend-net</b>rede docker</span>
+          <span class="ng-label" style="left:62.5%;top:73.4%"><b>backend-net</b>rede docker</span>
+          <span class="ng-label" style="left:92.9%;top:56.25%"><b>dashboard</b>observador</span>
+        </div>
+      </div>
+      <p class="shot-note">Topologia ilustrativa e fictícia — para explicar o conceito, não um host real.</p>
+    </section>
+
     <!-- ================= FUNCIONALIDADES ================= -->
     <section id="funcionalidades" class="block container">
-      <div class="section-head" data-animate>
-        <p class="kicker">03 · Funcionalidades</p>
+      <div class="section-head reveal">
+        <p class="kicker">05 · Funcionalidades</p>
         <h2>O que ele faz hoje</h2>
         <p class="section-lead">Cada capacidade abaixo já tem implementação ou ADR correspondente no repositório.</p>
       </div>
-      <div class="features-grid">
-        <article class="feature" data-animate>
-          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1"/><rect x="3" y="13" width="18" height="7" rx="1"/></svg></div>
-          <h3>Descoberta de containers</h3>
-          <p>O <code>netprobe</code> lista containers em execução com imagem, estado e tempo de vida direto da Engine API.</p>
+
+      <div class="feature-beats" id="featureBeats">
+        <article class="beat" data-beat="containers">
+          <div>
+            <div class="beat-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1"/><rect x="3" y="13" width="18" height="7" rx="1"/></svg></div>
+            <h3>Monitorar containers</h3>
+            <p>O <code>netprobe</code> lista containers em execução com imagem, estado e tempo de vida direto da Engine API.</p>
+          </div>
+          <div class="beat-demo">
+            <div class="bd-containers" aria-hidden="true">
+              <div class="bd-c"><i class="on" data-dot="0"></i></div>
+              <div class="bd-c"><i class="on" data-dot="1"></i></div>
+              <div class="bd-c"><i class="on" data-dot="2"></i></div>
+              <div class="bd-c"><i data-dot="3"></i></div>
+            </div>
+          </div>
         </article>
-        <article class="feature" data-animate style="--d:80ms">
-          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="1.6" fill="currentColor" stroke="none"/><circle cx="14" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1.6" fill="currentColor" stroke="none"/></svg></div>
-          <h3>Mapa de portas</h3>
-          <p>Cruza portas publicadas pelos containers com as portas ocupadas no host para revelar também as <code>livres</code>.</p>
+        <article class="beat" data-beat="ports">
+          <div>
+            <div class="beat-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="1.6" fill="currentColor" stroke="none"/><circle cx="14" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1.6" fill="currentColor" stroke="none"/></svg></div>
+            <h3>Descobrir portas</h3>
+            <p>Cruza portas publicadas pelos containers com as portas ocupadas no host para revelar também as <code>livres</code>.</p>
+          </div>
+          <div class="beat-demo">
+            <div class="bd-ports" aria-hidden="true">
+              <span class="bd-p" data-p="0">443</span>
+              <span class="bd-p" data-p="1">5432</span>
+              <span class="bd-p" data-p="2">8080</span>
+            </div>
+          </div>
         </article>
-        <article class="feature" data-animate style="--d:160ms">
-          <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="m7 11 10-5M7 13l10 5"/></svg></div>
-          <h3>Redes Docker</h3>
-          <p>Inventaria redes e quem participa delas — base para entender isolamento e comunicação entre serviços.</p>
+        <article class="beat" data-beat="networks">
+          <div>
+            <div class="beat-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="m7 11 10-5M7 13l10 5"/></svg></div>
+            <h3>Entender redes</h3>
+            <p>Inventaria redes e quem participa delas — base para entender isolamento e comunicação entre serviços.</p>
+          </div>
+          <div class="beat-demo">
+            <svg class="bd-net" viewBox="0 0 160 60" aria-hidden="true">
+              <path data-edge pathLength="1" d="M14,30 L146,30" />
+              <circle cx="14" cy="30" r="6" fill="var(--bg-soft)" stroke="var(--border-strong)" stroke-width="1.4" />
+              <circle cx="146" cy="30" r="6" fill="rgba(52,211,153,.1)" stroke="var(--green)" stroke-width="1.4" />
+            </svg>
+          </div>
         </article>
-        <article class="feature" data-animate>
+        <article class="beat" data-beat="health">
+          <div>
+            <div class="beat-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
+            <h3>Acompanhar a saúde</h3>
+            <p>Toda leitura passa pelo <code>docker-socket-proxy</code>. Escrita no daemon? Estruturalmente impossível.</p>
+          </div>
+          <div class="beat-demo">
+            <svg class="bd-heart" viewBox="0 0 160 50" aria-hidden="true">
+              <path data-edge pathLength="1" d="M6,28 L44,28 L54,10 L66,44 L76,20 L86,28 L154,28" />
+            </svg>
+          </div>
+        </article>
+      </div>
+
+      <div class="features-grid" style="margin-top:6px">
+        <article class="feature reveal">
           <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
           <h3>API REST consolidada</h3>
           <p><code>FastAPI</code> com resposta única em <code>/api/v1/system/summary</code> — pronta para dashboards, scripts e automações.</p>
         </article>
-        <article class="feature" data-animate style="--d:80ms">
+        <article class="feature reveal" style="--d:80ms">
           <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg></div>
           <h3>Dashboard web</h3>
           <p>Interface React + Vite para consulta rápida do estado do host, alimentada pela API de observação.</p>
         </article>
-        <article class="feature" data-animate style="--d:160ms">
+        <article class="feature reveal" style="--d:160ms">
           <div class="f-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
           <h3>Seguro por construção</h3>
-          <p>Toda leitura passa pelo <code>docker-socket-proxy</code>. Escrita no daemon? Estruturalmente impossível.</p>
+          <p>Container dedicado, capacidades mínimas: a API só responde <code>GET</code>.</p>
         </article>
       </div>
 
-      <div style="margin-top:44px" data-animate>
+      <div style="margin-top:44px" class="reveal">
         <div class="api-panel">
           <div class="api-head"><span>endpoints disponíveis</span><code>base: http://localhost:8000</code></div>
           <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/healthz</span><span class="ep-desc">liveness do serviço</span></div>
@@ -895,53 +1181,57 @@
 
     <!-- ================= ARQUITETURA ================= -->
     <section id="arquitetura" class="block container">
-      <div class="section-head" data-animate>
-        <p class="kicker">04 · Arquitetura</p>
+      <div class="section-head reveal">
+        <p class="kicker">06 · Arquitetura</p>
         <h2>Fluxo somente-leitura, de ponta a ponta</h2>
         <p class="section-lead">Do daemon Docker até a sua tela, nenhum componente consegue alterar o ambiente observado.</p>
       </div>
-      <div class="arch" data-animate="wipe">
-        <div class="arch-row">
-          <div class="node host"><span class="tag">host</span><b>Homelab</b><small>Docker Engine + containers em execução, redes e portas publicadas.</small></div>
+      <div class="pin-stage pin-stage--arch" id="archPin">
+        <div class="pin-sticky">
+          <div class="arch" id="archStage">
+            <div class="arch-row">
+              <div class="node host" data-node="host"><span class="tag">host</span><b>Homelab</b><small>Docker Engine + containers em execução, redes e portas publicadas.</small></div>
+            </div>
+            <div class="arrow" data-arrow="0"><span class="grow"><svg width="18" height="34" viewBox="0 0 18 34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path class="grow-path" data-edge pathLength="1" d="M9 2v24m0 0-5-5m5 5 5-5"/><circle class="arch-pulse" data-pulse r="2.6" /></svg></span></div>
+            <div class="arch-row">
+              <div class="node proxy" data-node="proxy"><span class="tag">read-only</span><b>docker-socket-proxy</b><small>Fachada que expõe apenas os endpoints de leitura da Engine API. Escritas são bloqueadas aqui.</small></div>
+            </div>
+            <div class="arrow" data-arrow="1"><span class="grow"><svg width="18" height="34" viewBox="0 0 18 34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path class="grow-path" data-edge pathLength="1" d="M9 2v24m0 0-5-5m5 5 5-5"/><circle class="arch-pulse" data-pulse r="2.6" /></svg></span></div>
+            <div class="arch-row">
+              <div class="node core" data-node="core"><span class="tag">fastapi</span><b>PortWatch backend</b><small>O <strong>netprobe</strong> coleta containers, portas e redes; a API serve o resumo consolidado.</small></div>
+            </div>
+            <div class="arrow" data-arrow="2"><span class="grow"><svg width="18" height="34" viewBox="0 0 18 34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path class="grow-path" data-edge pathLength="1" d="M9 2v24m0 0-5-5m5 5 5-5"/><circle class="arch-pulse" data-pulse r="2.6" /></svg></span></div>
+            <div class="arch-row">
+              <div class="node" data-node="ui"><span class="tag">ui</span><b>Dashboard web</b><small>React + Vite consultando a API de observação.</small></div>
+              <div class="node" data-node="cli"><span class="tag">cli</span><b>curl / scripts</b><small>Qualquer cliente HTTP consome o mesmo resumo.</small></div>
+            </div>
+            <p class="arch-note">Decisões detalhadas nos <strong>ADRs 0001–0005</strong>: escolha do proxy, formato do resumo, política <code>somente-observação</code> e o ambiente de desenvolvimento isolado (<code>portwatch.env=dev-sandbox</code>).</p>
+          </div>
         </div>
-        <div class="arrow scrub"><span class="grow"><svg width="18" height="34" viewBox="0 0 18 34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M9 2v24m0 0-5-5m5 5 5-5"/></svg></span></div>
-        <div class="arch-row">
-          <div class="node proxy"><span class="tag">read-only</span><b>docker-socket-proxy</b><small>Fachada que expõe apenas os endpoints de leitura da Engine API. Escritas são bloqueadas aqui.</small></div>
-        </div>
-        <div class="arrow scrub"><span class="grow"><svg width="18" height="34" viewBox="0 0 18 34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M9 2v24m0 0-5-5m5 5 5-5"/></svg></span></div>
-        <div class="arch-row">
-          <div class="node core"><span class="tag">fastapi</span><b>PortWatch backend</b><small>O <strong>netprobe</strong> coleta containers, portas e redes; a API serve o resumo consolidado.</small></div>
-        </div>
-        <div class="arrow scrub"><span class="grow"><svg width="18" height="34" viewBox="0 0 18 34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M9 2v24m0 0-5-5m5 5 5-5"/></svg></span></div>
-        <div class="arch-row">
-          <div class="node"><span class="tag">ui</span><b>Dashboard web</b><small>React + Vite consultando a API de observação.</small></div>
-          <div class="node"><span class="tag">cli</span><b>curl / scripts</b><small>Qualquer cliente HTTP consome o mesmo resumo.</small></div>
-        </div>
-        <p class="arch-note">Decisões detalhadas nos <strong>ADRs 0001–0005</strong>: escolha do proxy, formato do resumo, política <code>somente-observação</code> e o ambiente de desenvolvimento isolado (<code>portwatch.env=dev-sandbox</code>).</p>
       </div>
     </section>
 
     <!-- ================= SEGURANÇA ================= -->
     <section id="seguranca" class="block container">
-      <div class="section-head" data-animate>
-        <p class="kicker">05 · Segurança</p>
+      <div class="section-head reveal">
+        <p class="kicker">07 · Segurança</p>
         <h2>Vigiar sem tocar</h2>
         <p class="section-lead">Monitorar não deveria criar risco. O PortWatch foi desenhado para ser o componente menos privilegiado do host.</p>
       </div>
       <div class="sec-grid">
-        <div class="sec-card" data-animate="left">
+        <div class="sec-card reveal reveal--left">
           <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
           <div><h3>Acesso intermediado</h3><p>O <strong>docker-socket-proxy</strong> filtra a Engine API: só leitura chega ao daemon. O socket Unix nunca é montado diretamente.</p></div>
         </div>
-        <div class="sec-card" data-animate="right" style="--d:80ms">
+        <div class="sec-card reveal reveal--right" style="--d:80ms">
           <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/><circle cx="12" cy="12" r="10"/></svg></div>
           <div><h3>Somente-observação</h3><p>Nenhuma rota inicia, para ou modifica containers. A política <code>somente-observa</code> vale para coleta e para a API.</p></div>
         </div>
-        <div class="sec-card" data-animate="left" style="--d:160ms">
+        <div class="sec-card reveal reveal--left" style="--d:160ms">
           <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
           <div><h3>Configuração por ambiente</h3><p>Segredos e ajustes vivem em variáveis de ambiente — nunca no código. Desenvolvimento usa o perfil isolado <code>portwatch.env=dev-sandbox</code>.</p></div>
         </div>
-        <div class="sec-card" data-animate="right" style="--d:240ms">
+        <div class="sec-card reveal reveal--right" style="--d:240ms">
           <div class="shield"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg></div>
           <div><h3>Menor privilégio</h3><p>Container dedicado, capacidades mínimas e superfície reduzida: a API só responde <code>GET</code>.</p></div>
         </div>
@@ -950,17 +1240,22 @@
 
     <!-- ================= INSTALAÇÃO ================= -->
     <section id="instalacao" class="block container">
-      <div class="section-head" data-animate>
-        <p class="kicker">06 · Instalação</p>
+      <div class="section-head reveal">
+        <p class="kicker">08 · Instalação</p>
         <h2>Do clone ao resumo em minutos</h2>
         <p class="section-lead">Sem mágica: o Makefile orquestra ambiente, testes e lint. O terminal ao lado mostra o caminho mínimo.</p>
       </div>
       <div class="install-grid">
-        <div class="term" data-animate>
+        <div class="term reveal">
           <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><span class="term-title">instalação — loop ilustrativo</span></div>
           <div class="term-lines" id="installTerm" aria-live="polite"></div>
+          <div class="term-checklist" id="installCheck" aria-hidden="true">
+            <p class="ic-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="ic-path" d="M20 6 9 17l-5-5" pathLength="1"/></svg><span>API healthy</span></p>
+            <p class="ic-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="ic-path" d="M20 6 9 17l-5-5" pathLength="1"/></svg><span>Collector connected</span></p>
+            <p class="ic-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="ic-path" d="M20 6 9 17l-5-5" pathLength="1"/></svg><span>Dashboard ready</span></p>
+          </div>
         </div>
-        <aside class="req-card" data-animate="right" style="--d:120ms">
+        <aside class="req-card reveal reveal--right" style="--d:120ms">
           <h3>Pré-requisitos</h3>
           <p>Tudo que você precisa antes do primeiro <code>make dev</code>.</p>
           <div class="req-chips" id="reqChips">
@@ -977,44 +1272,44 @@
 
     <!-- ================= STACK ================= -->
     <section id="stack" class="block container">
-      <div class="section-head" data-animate>
-        <p class="kicker">07 · Stack</p>
+      <div class="section-head reveal">
+        <p class="kicker">09 · Stack</p>
         <h2>Ferramentas simples, decisões explícitas</h2>
       </div>
       <div class="stack-grid">
-        <div class="stack-card" data-animate><span class="sc-tag">backend</span><b>Python + FastAPI</b><span>uvicorn · pydantic</span><p>API tipada, validação automática e documentação OpenAPI gerada.</p></div>
-        <div class="stack-card" data-animate style="--d:70ms"><span class="sc-tag">coleta</span><b>netprobe</b><span>Docker Engine API</span><p>Módulo de observação que consulta containers, portas e redes via proxy.</p></div>
-        <div class="stack-card" data-animate style="--d:140ms"><span class="sc-tag">frontend</span><b>React + Vite</b><span>TypeScript</span><p>Dashboard enxuto, build rápido e componentes focados em leitura.</p></div>
-        <div class="stack-card" data-animate style="--d:210ms"><span class="sc-tag">qualidade</span><b>pytest + ruff + mypy</b><span>Makefile</span><p>Testes, lint e checagem de tipos a um comando de distância.</p></div>
+        <div class="stack-card reveal"><span class="sc-tag">backend</span><b>Python + FastAPI</b><span>uvicorn · pydantic</span><p>API tipada, validação automática e documentação OpenAPI gerada.</p></div>
+        <div class="stack-card reveal" style="--d:70ms"><span class="sc-tag">coleta</span><b>netprobe</b><span>Docker Engine API</span><p>Módulo de observação que consulta containers, portas e redes via proxy.</p></div>
+        <div class="stack-card reveal" style="--d:140ms"><span class="sc-tag">frontend</span><b>React + Vite</b><span>TypeScript</span><p>Dashboard enxuto, build rápido e componentes focados em leitura.</p></div>
+        <div class="stack-card reveal" style="--d:210ms"><span class="sc-tag">qualidade</span><b>pytest + ruff + mypy</b><span>Makefile</span><p>Testes, lint e checagem de tipos a um comando de distância.</p></div>
       </div>
     </section>
 
     <!-- ================= ROADMAP ================= -->
     <section id="roadmap" class="block container">
-      <div class="section-head" data-animate>
-        <p class="kicker">08 · Roadmap</p>
+      <div class="section-head reveal">
+        <p class="kicker">10 · Roadmap</p>
         <h2>Onde o projeto está</h2>
         <p class="section-lead">Acompanhe a linha do tempo — ela se acende conforme você rola.</p>
       </div>
-      <div class="timeline">
-        <span class="tl-fill scrub" aria-hidden="true"></span>
-        <article class="tl-item" data-animate>
+      <div class="timeline" id="roadmapTimeline">
+        <span class="tl-fill" id="tlFill" aria-hidden="true"></span>
+        <article class="tl-item">
           <div class="tl-top"><h3>Fase 1 — Descoberta</h3><span class="tl-status st-done">concluída</span></div>
           <p>Coleta de containers, imagens, estados e portas publicadas direto da Docker Engine API.</p>
         </article>
-        <article class="tl-item" data-animate>
+        <article class="tl-item">
           <div class="tl-top"><h3>Fase 2 — API REST</h3><span class="tl-status st-done">concluída</span></div>
           <p>Serviço FastAPI com <code>/api/v1/system/summary</code> consolidando o estado do host.</p>
         </article>
-        <article class="tl-item" data-animate>
+        <article class="tl-item">
           <div class="tl-top"><h3>Fase 3 — Dashboard web</h3><span class="tl-status st-progress">em andamento</span></div>
           <p>Interface React para visualizar containers, portas e redes sem sair do navegador.</p>
         </article>
-        <article class="tl-item" data-animate>
+        <article class="tl-item">
           <div class="tl-top"><h3>Fase 4 — Sandbox de desenvolvimento</h3><span class="tl-status st-progress">em andamento</span></div>
           <p>Ambiente isolado com perfil <code>portwatch.env=dev-sandbox</code>: dados simulados para evoluir sem tocar no homelab real.</p>
         </article>
-        <article class="tl-item" data-animate>
+        <article class="tl-item">
           <div class="tl-top"><h3>Próximo — Histórico &amp; tendências</h3><span class="tl-status st-plan">planejado</span></div>
           <p>Persistência leve de séries temporais para comparar o estado do host ao longo dos dias (a definir em novo ADR).</p>
         </article>
@@ -1023,23 +1318,23 @@
 
     <!-- ================= EQUIPE ================= -->
     <section id="equipe" class="block container">
-      <div class="section-head" data-animate>
-        <p class="kicker">09 · Equipe</p>
+      <div class="section-head reveal">
+        <p class="kicker">11 · Equipe</p>
         <h2>Humano no comando, agentes no código</h2>
         <p class="section-lead">O projeto avança com desenvolvimento assistido por agentes de IA — sempre sob revisão e decisão humana.</p>
       </div>
       <div class="team-grid">
-        <div class="person" data-animate>
+        <div class="person reveal">
           <div class="avatar" aria-hidden="true">RQ</div>
           <b>Rique</b><span>product owner · mantenedor</span>
           <p>Idealiza o PortWatch, define prioridades, revisa cada ADR e aprova o que entra na main.</p>
         </div>
-        <div class="person" data-animate style="--d:90ms">
+        <div class="person reveal" style="--d:90ms">
           <div class="avatar" aria-hidden="true">CC</div>
           <b>Claude Code</b><span>engenharia líder</span>
           <p>Lidera implementação de backend e infraestrutura, coordena entregas e mantém a coerência técnica.</p>
         </div>
-        <div class="person" data-animate style="--d:180ms">
+        <div class="person reveal" style="--d:180ms">
           <div class="avatar" aria-hidden="true">CX</div>
           <b>Codex &amp; Copilot</b><span>colaboração multiagente</span>
           <p>Revisões cruzadas, suíte de testes e evolução do frontend em paralelo com o backend.</p>
@@ -1067,7 +1362,7 @@
         <h4>Projeto</h4>
         <ul>
           <li><a href="#sobre">O que é</a></li>
-          <li><a href="#preview">Preview do dashboard</a></li>
+          <li><a href="#preview">Dashboard</a></li>
           <li><a href="#roadmap">Roadmap</a></li>
           <li><a href="#equipe">Equipe</a></li>
         </ul>
@@ -1091,265 +1386,7 @@
     </div>
   </footer>
 
-  <script>
-  (function () {
-    "use strict";
-    var root = document.documentElement;
-
-    /* suporte nativo a scroll-driven animations */
-    try {
-      if (window.CSS && CSS.supports && CSS.supports("animation-timeline", "view()")) {
-        root.classList.add("sda");
-      }
-    } catch (e) { /* navegador antigo: usa fallback por observer */ }
-
-    var reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-
-    /* ---------- menu mobile ---------- */
-    var menuBtn = document.getElementById("menuBtn");
-    var navLinks = document.getElementById("navLinks");
-    if (menuBtn && navLinks) {
-      menuBtn.addEventListener("click", function () {
-        var open = navLinks.classList.toggle("open");
-        menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
-        menuBtn.setAttribute("aria-label", open ? "Fechar menu" : "Abrir menu");
-      });
-      navLinks.addEventListener("click", function (e) {
-        if (e.target && e.target.closest && e.target.closest("a")) {
-          navLinks.classList.remove("open");
-          menuBtn.setAttribute("aria-expanded", "false");
-        }
-      });
-    }
-
-    /* ---------- revelador genérico (entradas únicas) ----------
-       Elementos .scrub são controlados pelo próprio CSS quando há
-       suporte nativo e ficam visíveis por padrão nos demais. */
-    var revealEls = [].slice.call(document.querySelectorAll("[data-animate]:not(.scrub)"));
-    if ("IntersectionObserver" in window && !reduceMotion) {
-      var io = new IntersectionObserver(function (entries) {
-        entries.forEach(function (en) {
-          if (!en.isIntersecting) return;
-          en.target.classList.add("in");
-          io.unobserve(en.target);
-        });
-      }, { threshold: 0.16, rootMargin: "0px 0px -7% 0px" });
-      revealEls.forEach(function (el) { io.observe(el); });
-
-      var arrows = [].slice.call(document.querySelectorAll(".arrow.scrub"));
-      if (arrows.length) {
-        var arrowObs = new IntersectionObserver(function (entries) {
-          entries.forEach(function (en) {
-            if (!en.isIntersecting || root.classList.contains("sda")) return;
-            en.target.classList.add("in");
-            arrowObs.unobserve(en.target);
-          });
-        }, { threshold: 0.9 });
-        arrows.forEach(function (el) { arrowObs.observe(el); });
-      }
-    } else {
-      revealEls.forEach(function (el) { el.classList.add("in"); });
-      [].slice.call(document.querySelectorAll(".arrow.scrub")).forEach(function (el) { el.classList.add("in"); });
-    }
-
-    /* ---------- spy de navegação ---------- */
-    var navAnchorList = [].slice.call(document.querySelectorAll("nav.links a"));
-    var sectionList = [].slice.call(document.querySelectorAll("main section[id]"));
-    if ("IntersectionObserver" in window && sectionList.length) {
-      var spyMap = {};
-      navAnchorList.forEach(function (a) {
-        var href = a.getAttribute("href") || "";
-        if (href.charAt(0) === "#") spyMap[href.slice(1)] = a;
-      });
-      var spy = new IntersectionObserver(function (entries) {
-        entries.forEach(function (en) {
-          if (!en.isIntersecting) return;
-          var link = spyMap[en.target.id];
-          if (!link) return;
-          navAnchorList.forEach(function (a) { a.classList.remove("active"); });
-          link.classList.add("active");
-        });
-      }, { rootMargin: "-35% 0px -55% 0px", threshold: 0 });
-      sectionList.forEach(function (s) { spy.observe(s); });
-    }
-
-    /* ---------- contadores dos stats ---------- */
-    function animateCount(el) {
-      var target = parseFloat(el.getAttribute("data-count")) || 0;
-      var from = parseFloat(el.getAttribute("data-from")) || 0;
-      var suffix = el.getAttribute("data-suffix") || "";
-      var duration = 1300;
-      var start = null;
-      function step(ts) {
-        if (start === null) start = ts;
-        var p = Math.min((ts - start) / duration, 1);
-        var eased = 1 - Math.pow(1 - p, 3);
-        el.textContent = Math.round(from + (target - from) * eased) + suffix;
-        if (p < 1) requestAnimationFrame(step);
-      }
-      requestAnimationFrame(step);
-    }
-    var counters = [].slice.call(document.querySelectorAll("[data-count]"));
-    if ("IntersectionObserver" in window && !reduceMotion && counters.length) {
-      var countObs = new IntersectionObserver(function (entries) {
-        entries.forEach(function (en) {
-          if (!en.isIntersecting) return;
-          animateCount(en.target);
-          countObs.unobserve(en.target);
-        });
-      }, { threshold: 0.6 });
-      counters.forEach(function (el) { countObs.observe(el); });
-    }
-
-    /* ---------- preview do dashboard: camadas ---------- */
-    var shot = document.getElementById("dashShot");
-    if (shot) {
-      if ("IntersectionObserver" in window && !reduceMotion) {
-        var shotObs = new IntersectionObserver(function (entries) {
-          entries.forEach(function (en) {
-            if (!en.isIntersecting) return;
-            shot.classList.add("in");
-            shotObs.unobserve(shot);
-          });
-        }, { threshold: 0.32 });
-        shotObs.observe(shot);
-      } else {
-        shot.classList.add("in");
-      }
-    }
-
-    var reqChips = document.getElementById("reqChips");
-    if (reqChips) {
-      if ("IntersectionObserver" in window && !reduceMotion) {
-        var chipsObs = new IntersectionObserver(function (entries) {
-          entries.forEach(function (en) {
-            if (!en.isIntersecting) return;
-            reqChips.classList.add("in");
-            chipsObs.unobserve(reqChips);
-          });
-        }, { threshold: 0.4 });
-        chipsObs.observe(reqChips);
-      } else {
-        reqChips.classList.add("in");
-      }
-    }
-
-    /* ---------- timeline: itens acendem ---------- */
-    var tlItems = [].slice.call(document.querySelectorAll(".tl-item"));
-    if ("IntersectionObserver" in window && !reduceMotion && tlItems.length) {
-      var tlObs = new IntersectionObserver(function (entries) {
-        entries.forEach(function (en) {
-          en.target.classList.toggle("lit", en.isIntersecting);
-        });
-      }, { threshold: 0.55 });
-      tlItems.forEach(function (el) { tlObs.observe(el); });
-    } else {
-      tlItems.forEach(function (el) { el.classList.add("lit"); });
-    }
-
-    /* ---------- terminais: linhas rápidas em loop ----------
-       Todos os setTimeout ficam rastreados; cada ciclo limpa os
-       anteriores para nunca acumular timers sobrepostos. */
-    function makeTerminal(container, buildLines, opts) {
-      if (!container) return;
-      opts = opts || {};
-      var lineDelay = opts.lineDelay || 130;
-      var holdTime = opts.holdTime || 2800;
-      var timers = [];
-      var playing = false;
-
-      function later(fn, ms) { timers.push(window.setTimeout(fn, ms)); }
-      function clearTimers() {
-        timers.forEach(function (t) { clearTimeout(t); });
-        timers.length = 0;
-      }
-
-      function renderStatic() {
-        container.innerHTML = "";
-        buildLines().forEach(function (ln) {
-          var div = document.createElement("div");
-          div.className = (ln.cls || "") + " show";
-          div.innerHTML = ln.html;
-          container.appendChild(div);
-        });
-      }
-
-      function playCycle() {
-        clearTimers();
-        container.innerHTML = "";
-        var frag = document.createDocumentFragment();
-        var lines = buildLines();
-        lines.forEach(function (ln, i) {
-          var div = document.createElement("div");
-          div.className = ln.cls || "";
-          div.innerHTML = ln.html;
-          frag.appendChild(div);
-          later(function () { div.classList.add("show"); }, i * lineDelay);
-        });
-        container.appendChild(frag);
-        later(playCycle, lines.length * lineDelay + holdTime);
-      }
-
-      if (reduceMotion || !("IntersectionObserver" in window)) {
-        renderStatic();
-        return;
-      }
-      var termObs = new IntersectionObserver(function (entries) {
-        entries.forEach(function (en) {
-          if (en.isIntersecting && !playing) {
-            playing = true;
-            playCycle();
-          } else if (!en.isIntersecting && playing) {
-            playing = false;
-            clearTimers();
-          }
-        });
-      }, { threshold: 0.25 });
-      termObs.observe(container);
-    }
-
-    var HERO_LINES = [
-      { cls: "t-line t-cmd", html: '<span class="p">➜</span> curl <span class="flag">http://localhost:8000</span>/api/v1/system/summary | jq' },
-      { cls: "t-line", html: '<span class="j-punc">{</span>' },
-      { cls: "t-line", html: '  <span class="j-key">"status"</span><span class="j-punc">:</span> <span class="j-str">"ok"</span><span class="j-punc">,</span>' },
-      { cls: "t-line", html: '  <span class="j-key">"docker_version"</span><span class="j-punc">:</span> <span class="j-str">"28.3.2"</span><span class="j-punc">,</span>' },
-      { cls: "t-line", html: '  <span class="j-key">"containers_running"</span><span class="j-punc">:</span> <span class="j-num">9</span><span class="j-punc">,</span>' },
-      { cls: "t-line", html: '  <span class="j-key">"containers_stopped"</span><span class="j-punc">:</span> <span class="j-num">3</span><span class="j-punc">,</span>' },
-      { cls: "t-line", html: '  <span class="j-key">"networks_total"</span><span class="j-punc">:</span> <span class="j-num">5</span><span class="j-punc">,</span>' },
-      { cls: "t-line", html: '  <span class="j-key">"ports_used_total"</span><span class="j-punc">:</span> <span class="j-num">14</span><span class="j-punc">,</span>' },
-      { cls: "t-line", html: '  <span class="j-key">"mode"</span><span class="j-punc">:</span> <span class="j-str">"somente-observação"</span>' },
-      { cls: "t-line", html: '<span class="j-punc">}</span>' },
-      { cls: "t-line", html: '<span class="cursor"></span>' }
-    ];
-
-    var INSTALL_LINES = [
-      { cls: "tr t-cmd", html: '<span class="t-prompt">➜</span> git clone <span class="t-flag">git@github.com:rique/PortWatch.git</span>' },
-      { cls: "tr", html: '<span class="t-comment"># entrar no projeto</span>' },
-      { cls: "tr t-cmd", html: '<span class="t-prompt">➜</span> cd PortWatch' },
-      { cls: "tr", html: '<span class="t-comment"># ambiente isolado de desenvolvimento (ADR 0005)</span>' },
-      { cls: "tr t-cmd", html: '<span class="t-prompt">➜</span> cp .env.example portwatch.env   <span class="t-comment"># dev-sandbox</span>' },
-      { cls: "tr t-cmd", html: '<span class="t-prompt">➜</span> make dev   <span class="t-comment"># backend + frontend</span>' },
-      { cls: "tr", html: '<span class="t-comment"># primeira leitura do host</span>' },
-      { cls: "tr t-cmd", html: '<span class="t-prompt">➜</span> curl localhost:8000/api/v1/system/summary' },
-      { cls: "tr", html: '{<span class="j-key">"status"</span>: <span class="j-str">"ok"</span>, <span class="j-key">"containers_running"</span>: <span class="j-num">12</span>, …}' },
-      { cls: "tr", html: '<span class="cursor"></span>' }
-    ];
-
-    makeTerminal(document.getElementById("termOut"), function () { return HERO_LINES; }, { lineDelay: 105, holdTime: 3600 });
-    makeTerminal(document.getElementById("installTerm"), function () { return INSTALL_LINES; }, { lineDelay: 140, holdTime: 2400 });
-
-    /* ---------- radar: pausa fora da tela ---------- */
-    var radar = document.querySelector(".radar");
-    var sweepEl = radar ? radar.querySelector(".sweep") : null;
-    if (radar && sweepEl && "IntersectionObserver" in window) {
-      var radarObs = new IntersectionObserver(function (entries) {
-        entries.forEach(function (en) {
-          sweepEl.style.animationPlayState = en.isIntersecting ? "running" : "paused";
-        });
-      }, { threshold: 0 });
-      radarObs.observe(radar);
-    }
-  })();
-  </script>
+  <script src="assets/vendor/anime.min.js"></script>
+  <script src="assets/site.js"></script>
 </body>
 </html>

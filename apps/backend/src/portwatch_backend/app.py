@@ -1,9 +1,8 @@
 """FastAPI application factory.
 
-Structured logging / tracing are intentionally not wired up here — tracing
-stays out of the MVP (OpenTelemetry, see CLAUDE.md), and this middleware
-stack is the extension point for it later. Prometheus metrics (Phase 9) are
-wired up below via core/metrics.py. Routing, CORS, and RFC 7807-shaped error
+Tracing stays out of the MVP (OpenTelemetry, see CLAUDE.md), and this
+middleware stack is the extension point for it later. Structured JSON logs
+and Prometheus metrics (Phase 9) are wired up below. Routing, CORS, and RFC 7807-shaped error
 responses are the Phase 2 foundation; the Collector lifecycle below is
 Phase 3 (see collector/service.py).
 """
@@ -24,6 +23,7 @@ from portwatch_backend.collector.state import SnapshotStore
 from portwatch_backend.core.auth import require_api_token
 from portwatch_backend.core.config import get_settings
 from portwatch_backend.core.events import SnapshotBroadcaster
+from portwatch_backend.core.logging import configure_logging
 from portwatch_backend.core.metrics import PortWatchMetrics, build_http_metrics_middleware
 from portwatch_backend.core.middleware import request_id_middleware
 from portwatch_backend.core.schemas import ProblemDetail
@@ -43,6 +43,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    configure_logging(settings.log_level)
     event_broadcaster = SnapshotBroadcaster()
     snapshot_store = SnapshotStore(on_publish=event_broadcaster.publish)
     metrics = PortWatchMetrics()

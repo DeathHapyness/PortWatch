@@ -22,6 +22,7 @@ describe('typed API client', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
     fetchMock.mockReset()
   })
 
@@ -35,6 +36,30 @@ describe('typed API client', () => {
       headers: { Accept: 'application/json, application/problem+json' },
       signal: controller.signal,
     })
+  })
+
+  it('sends a Bearer Authorization header when VITE_API_TOKEN is configured', async () => {
+    vi.stubEnv('VITE_API_TOKEN', 's3cr3t')
+    fetchMock.mockResolvedValue(jsonResponse({}))
+
+    await api.systemSummary()
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/system/summary', {
+      headers: {
+        Accept: 'application/json, application/problem+json',
+        Authorization: 'Bearer s3cr3t',
+      },
+      signal: undefined,
+    })
+  })
+
+  it('omits Authorization entirely when no token is configured', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({}))
+
+    await api.systemSummary()
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init?.headers).not.toHaveProperty('Authorization')
   })
 
   it.each(['application/problem+json', 'application/vnd.portwatch.problem+json'])(

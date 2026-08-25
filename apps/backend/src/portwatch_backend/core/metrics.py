@@ -98,14 +98,14 @@ class PortWatchMetrics:
 def _route_path_template(request: Request) -> str:
     """The matched route's path template (e.g. `/api/v1/containers/{id}`).
 
-    Falls back to the raw request path for requests that never matched a
-    route (404s) — those are rare enough not to threaten label cardinality,
-    unlike raw path params on real routes (container/network ids).
+    Requests that never matched a route share one bounded label. Using their
+    raw paths would let arbitrary 404 URLs create an unbounded number of
+    Prometheus time series and grow process memory indefinitely.
     """
 
     route = request.scope.get("route")
     path = getattr(route, "path", None)
-    return path if isinstance(path, str) else request.url.path
+    return path if isinstance(path, str) else "__unmatched__"
 
 
 def build_http_metrics_middleware(metrics: PortWatchMetrics) -> Middleware:
@@ -115,16 +115,22 @@ def build_http_metrics_middleware(metrics: PortWatchMetrics) -> Middleware:
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         start = time.monotonic()
-        response = await call_next(request)
-        duration_seconds = time.monotonic() - start
-
-        path = _route_path_template(request)
-        metrics.http_requests_total.labels(
-            method=request.method, path=path, status=str(response.status_code)
-        ).inc()
-        metrics.http_request_duration_seconds.labels(method=request.method, path=path).observe(
-            duration_seconds
-        )
-        return response
+        status_code = 500
+        try:
+            response = await call_next(request)
+        except Exception:
+            raise
+        else:
+            status_code = response.status_code
+            return response
+        finally:
+            duration_seconds = time.monotonic() - start
+            path = _route_path_template(request)
+            metrics.http_requests_total.labels(
+                method=request.method, path=path, status=str(status_code)
+            ).inc()
+            metrics.http_request_duration_seconds.labels(method=request.method, path=path).observe(
+                duration_seconds
+            )
 
     return http_metrics_middleware

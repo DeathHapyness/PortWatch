@@ -819,6 +819,35 @@
       .journey.pinned .j-word::after { display: inline !important; }
       .sweep { animation: none !important; }
     }
+
+    /* Modo estável: animações aprimoram, mas nunca controlam o layout. */
+    html.stable .pin-stage { height: auto !important; }
+    html.stable .pin-sticky { position: static !important; height: auto !important; overflow: visible !important; padding: 12px 0; }
+    html.stable .journey { height: auto !important; }
+    html.stable .journey-stage { position: static; min-height: 0; height: auto; }
+    html.stable .journey-words, html.stable .j-word { position: static; }
+    html.stable .j-word { opacity: 1; transform: none; }
+    html.stable .j-word::after { display: inline; }
+    html.stable .j-word:last-child::after { display: none; }
+    html.stable .h-in, html.stable .terminal-wrap, html.stable .shot,
+    html.stable .shot-layer, html.stable .bar, html.stable .pchip,
+    html.stable .port-node, html.stable .node, html.stable .arch-note,
+    html.stable .chip, html.stable .ic-item, html.stable .tl-item,
+    html.stable .netgraph .ng-node, html.stable .ng-label,
+    html.stable .hero-graph .hg-node, html.stable .hero-graph .hg-ring {
+      opacity: 1 !important; transform: none !important;
+    }
+    html.stable .hero-graph .hg-line, html.stable .netgraph .ng-edge,
+    html.stable .grow-path, html.stable .bd-net path,
+    html.stable .bd-heart path, html.stable .ic-path { stroke-dashoffset: 0 !important; }
+    html.stable .tl-fill { transform: scaleY(1) !important; }
+    html.stable .terminal-body, html.stable .term-lines { overflow-x: auto; }
+    html.stable .t-line, html.stable .tr {
+      animation: stableLineIn .35s var(--ease) both;
+      animation-delay: calc(var(--line) * 35ms);
+    }
+    @keyframes stableLineIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+    :focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
   </style>
 </head>
 <body>
@@ -1295,7 +1324,7 @@
           <div class="req-chips" id="reqChips">
             <span class="chip" style="--i:0">Docker 24+</span>
             <span class="chip" style="--i:1">Docker Compose v2</span>
-            <span class="chip" style="--i:2">Python 3.11+</span>
+            <span class="chip" style="--i:2">Python 3.12+</span>
             <span class="chip" style="--i:3">Node.js 20+</span>
             <span class="chip" style="--i:4">GNU make</span>
           </div>

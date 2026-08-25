@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 
+from portwatch_backend.api.events import MAX_AUTH_MESSAGE_BYTES, MAX_AUTH_TOKEN_BYTES
 from portwatch_backend.app import create_app
 from portwatch_backend.collector.state import SnapshotStore
 from portwatch_backend.core.config import Settings
@@ -306,3 +307,70 @@ async def test_websocket_rejects_new_connections_once_the_broadcaster_is_closed(
     # the close frame, not an accept followed by a close.
     assert closed == {"type": "websocket.close", "code": 1001, "reason": ""}
     assert connection.exception() is None
+
+
+# --- first-message auth hardening ----------------------------------------
+
+
+async def _connect_and_send_first_message(
+    monkeypatch: pytest.MonkeyPatch, raw_message: str
+) -> MutableMapping[str, Any]:
+    monkeypatch.setattr(
+        "portwatch_backend.core.auth.get_settings",
+        lambda: Settings(api_token="s3cr3t"),
+    )
+    app = create_app()
+
+    inbound, outbound, connection = await _open_connection(app)
+    accepted = await asyncio.wait_for(outbound.get(), timeout=1)
+    assert accepted["type"] == "websocket.accept"
+
+    await inbound.put({"type": "websocket.receive", "text": raw_message})
+    closed = await asyncio.wait_for(outbound.get(), timeout=1)
+    await asyncio.wait_for(connection, timeout=1)
+    return closed
+
+
+async def test_websocket_rejects_an_oversized_auth_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The message-size check runs on the raw string before JSON is even
+    # parsed, so a single huge token value trips it first — this isolates
+    # that check from the (separately tested) token-size one below.
+    oversized = json.dumps({"token": "x" * (MAX_AUTH_MESSAGE_BYTES + 1)})
+    closed = await _connect_and_send_first_message(monkeypatch, oversized)
+
+    assert closed == {"type": "websocket.close", "code": 1008, "reason": ""}
+
+
+async def test_websocket_rejects_an_oversized_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Comfortably under MAX_AUTH_MESSAGE_BYTES, so this exercises the
+    # token-specific size check, not the whole-message one above.
+    oversized_token = json.dumps({"token": "x" * (MAX_AUTH_TOKEN_BYTES + 1)})
+    closed = await _connect_and_send_first_message(monkeypatch, oversized_token)
+
+    assert closed == {"type": "websocket.close", "code": 1008, "reason": ""}
+
+
+async def test_websocket_rejects_a_duplicate_token_field(monkeypatch: pytest.MonkeyPatch) -> None:
+    closed = await _connect_and_send_first_message(
+        monkeypatch, '{"token":"s3cr3t","token":"s3cr3t"}'
+    )
+
+    assert closed == {"type": "websocket.close", "code": 1008, "reason": ""}
+
+
+async def test_websocket_rejects_an_auth_message_with_extra_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed = await _connect_and_send_first_message(
+        monkeypatch, json.dumps({"token": "s3cr3t", "extra": "field"})
+    )
+
+    assert closed == {"type": "websocket.close", "code": 1008, "reason": ""}
+
+
+async def test_websocket_rejects_a_whitespace_only_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    closed = await _connect_and_send_first_message(monkeypatch, json.dumps({"token": "   "}))
+
+    assert closed == {"type": "websocket.close", "code": 1008, "reason": ""}

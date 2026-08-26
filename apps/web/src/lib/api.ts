@@ -67,8 +67,47 @@ export interface ProblemDetail {
   type: string
   title: string
   status: number
-  detail: string | null
+  detail: unknown
   request_id: string | null
+}
+
+const MAX_PROBLEM_DETAIL_MESSAGE_LENGTH = 500
+
+function truncateProblemMessage(message: string): string {
+  if (message.length <= MAX_PROBLEM_DETAIL_MESSAGE_LENGTH) return message
+  return `${message.slice(0, MAX_PROBLEM_DETAIL_MESSAGE_LENGTH - 1)}…`
+}
+
+function validationIssueMessage(issue: unknown): string | null {
+  if (!issue || typeof issue !== 'object') return null
+  const record = issue as Record<string, unknown>
+  if (typeof record.msg !== 'string') return null
+
+  const location = Array.isArray(record.loc)
+    ? record.loc.filter((part): part is string | number =>
+        ['string', 'number'].includes(typeof part),
+      )
+    : []
+  return location.length > 0 ? `${location.join('.')}: ${record.msg}` : record.msg
+}
+
+export function formatProblemDetail(detail: unknown): string | null {
+  if (detail === null || detail === undefined) return null
+  if (typeof detail === 'string') {
+    const normalized = detail.trim()
+    return normalized ? truncateProblemMessage(normalized) : null
+  }
+
+  if (Array.isArray(detail)) {
+    const issues = detail.map(validationIssueMessage).filter((issue): issue is string => !!issue)
+    if (issues.length > 0) return truncateProblemMessage(issues.join('; '))
+  }
+
+  try {
+    return truncateProblemMessage(JSON.stringify(detail))
+  } catch {
+    return 'Additional error details were not displayable'
+  }
 }
 
 export class ApiError extends Error {
@@ -76,7 +115,11 @@ export class ApiError extends Error {
   readonly problem: ProblemDetail | null
 
   constructor(status: number, problem: ProblemDetail | null) {
-    super(problem?.detail ?? problem?.title ?? `API request failed with status ${status}`)
+    super(
+      formatProblemDetail(problem?.detail) ??
+        problem?.title ??
+        `API request failed with status ${status}`,
+    )
     this.name = 'ApiError'
     this.status = status
     this.problem = problem

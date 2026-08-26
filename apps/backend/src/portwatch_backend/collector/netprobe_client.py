@@ -91,9 +91,14 @@ def fetch_host_ports(netprobe_url: str, *, timeout: float = 5.0) -> list[HostPor
 
     url = f"{netprobe_url.rstrip('/')}/host-ports"
     try:
-        response = httpx.get(url, timeout=timeout)
-        response.raise_for_status()
-        payload = json.loads(_read_bounded_response(response))
+        # Streamed deliberately: a plain httpx.get() already reads the whole
+        # body into memory before _read_bounded_response ever runs, which
+        # would make the 1 MiB check a no-op against the actual download.
+        # Streaming lets the loop below abort the connection mid-transfer.
+        with httpx.stream("GET", url, timeout=timeout) as response:
+            response.raise_for_status()
+            body = _read_bounded_response(response)
+        payload = json.loads(body)
     except httpx.HTTPError as exc:
         raise NetprobeError(f"netprobe request to {url} failed: {exc}") from exc
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:

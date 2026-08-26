@@ -46,6 +46,45 @@ class AddressParsingTests(unittest.TestCase):
             netprobe._parse_local_address("not-a-proc-address", "ipv4")
 
 
+class StartupValidationTests(unittest.TestCase):
+    """_validate_loopback_host / _validate_port — main()'s trust-boundary
+    checks, factored out so they're testable without actually starting a
+    server. network_mode: host means the process itself is the only thing
+    that can stop NETPROBE_HOST from being reachable off the machine."""
+
+    def test_accepts_ipv4_and_ipv6_loopback_hosts(self) -> None:
+        self.assertEqual(netprobe._validate_loopback_host("127.0.0.1"), "127.0.0.1")
+        self.assertEqual(netprobe._validate_loopback_host("::1"), "::1")
+
+    def test_rejects_a_non_loopback_address(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must be a loopback IP address"):
+            netprobe._validate_loopback_host("0.0.0.0")
+
+    def test_rejects_a_lan_address(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must be a loopback IP address"):
+            netprobe._validate_loopback_host("192.168.1.10")
+
+    def test_rejects_a_value_that_is_not_an_ip_address(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must be a loopback IP address"):
+            netprobe._validate_loopback_host("localhost")
+
+    def test_accepts_the_port_boundaries(self) -> None:
+        self.assertEqual(netprobe._validate_port("1024"), 1024)
+        self.assertEqual(netprobe._validate_port("65535"), 65535)
+
+    def test_rejects_a_port_below_1024(self) -> None:
+        with self.assertRaisesRegex(ValueError, "1024 to 65535"):
+            netprobe._validate_port("1023")
+
+    def test_rejects_a_port_above_65535(self) -> None:
+        with self.assertRaisesRegex(ValueError, "1024 to 65535"):
+            netprobe._validate_port("65536")
+
+    def test_rejects_a_non_numeric_port(self) -> None:
+        with self.assertRaisesRegex(ValueError, "1024 to 65535"):
+            netprobe._validate_port("not-a-port")
+
+
 class OccupiedPortsTests(unittest.TestCase):
     def test_reads_bound_ports_filters_tcp_states_and_deduplicates(self) -> None:
         with TemporaryDirectory() as directory:
@@ -125,6 +164,23 @@ class HttpContractTests(unittest.TestCase):
     def test_unknown_route_is_json_404(self) -> None:
         self.assertEqual(self.get_json("/missing"), (404, {"error": "not found"}))
 
+    def test_response_headers_prevent_caching_and_content_sniffing(self) -> None:
+        response = urllib.request.urlopen(f"{self.base_url}/health", timeout=2)
+        with response:
+            self.assertEqual(response.getheader("Cache-Control"), "no-store")
+            self.assertEqual(response.getheader("X-Content-Type-Options"), "nosniff")
+
+    def test_a_kernel_read_failure_returns_503_without_leaking_details(self) -> None:
+        with patch.object(
+            netprobe,
+            "read_occupied_ports",
+            side_effect=netprobe.NetprobeReadError("failed to read kernel socket table /proc/net/oops"),
+        ):
+            status, payload = self.get_json("/host-ports")
+
+        self.assertEqual(status, 503)
+        self.assertEqual(payload, {"error": "host port data unavailable"})
+
     def test_host_ports_response_contains_sorted_protocol_summaries(self) -> None:
         ports = [
             {"protocol": "udp", "family": "ipv4", "address": "0.0.0.0", "port": 5353},
@@ -170,6 +226,29 @@ class ServerHardeningTests(unittest.TestCase):
             netprobe.NetprobeHTTPServer(
                 ("127.0.0.1", 0), netprobe.Handler, max_workers=0
             )
+
+    def test_binds_ipv6_loopback_when_configured(self) -> None:
+        # NETPROBE_HOST=::1 is accepted by _validate_loopback_host, so the
+        # server must actually be able to bind there — the stdlib
+        # HTTPServer's hardcoded AF_INET default would fail this silently
+        # otherwise (before this fix, ::1 was validated as loopback but the
+        # server always tried to bind as IPv4).
+        try:
+            server = netprobe.NetprobeHTTPServer(("::1", 0), netprobe.Handler)
+        except OSError as exc:  # pragma: no cover - only if the host lacks IPv6
+            self.skipTest(f"IPv6 loopback unavailable in this environment: {exc}")
+        try:
+            self.assertEqual(server.address_family, socket.AF_INET6)
+            self.assertEqual(server.server_address[0], "::1")
+        finally:
+            server.server_close()
+
+    def test_binds_ipv4_loopback_by_default(self) -> None:
+        server = netprobe.NetprobeHTTPServer(("127.0.0.1", 0), netprobe.Handler)
+        try:
+            self.assertEqual(server.address_family, socket.AF_INET)
+        finally:
+            server.server_close()
 
     def test_idle_connection_is_closed_after_timeout(self) -> None:
         with patch.object(netprobe, "CONNECTION_TIMEOUT_SECONDS", 0.05):

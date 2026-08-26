@@ -210,21 +210,40 @@ class NetprobeHTTPServer(ThreadingHTTPServer):
             self._worker_slots.release()
 
 
-def main() -> None:
-    host = os.environ.get("NETPROBE_HOST", "127.0.0.1")
-    try:
-        address = ip_address(host)
-    except ValueError as exc:
-        raise SystemExit("NETPROBE_HOST must be a loopback IP address") from exc
-    if not address.is_loopback:
-        raise SystemExit("NETPROBE_HOST must be a loopback IP address")
+def _validate_loopback_host(raw: str) -> str:
+    """Reject anything that isn't a loopback address.
+
+    network_mode: host means the usual `ports:` Compose mapping doesn't
+    apply — the process itself is the only thing standing between
+    NETPROBE_HOST and being reachable from the LAN, so this has to fail
+    closed rather than trust the value blindly (see infra/netprobe/README.md).
+    """
 
     try:
-        port = int(os.environ.get("NETPROBE_PORT", "8088"))
+        address = ip_address(raw)
     except ValueError as exc:
-        raise SystemExit("NETPROBE_PORT must be an integer from 1024 to 65535") from exc
+        raise ValueError("NETPROBE_HOST must be a loopback IP address") from exc
+    if not address.is_loopback:
+        raise ValueError("NETPROBE_HOST must be a loopback IP address")
+    return raw
+
+
+def _validate_port(raw: str) -> int:
+    try:
+        port = int(raw)
+    except ValueError as exc:
+        raise ValueError("NETPROBE_PORT must be an integer from 1024 to 65535") from exc
     if not 1024 <= port <= 65535:
-        raise SystemExit("NETPROBE_PORT must be an integer from 1024 to 65535")
+        raise ValueError("NETPROBE_PORT must be an integer from 1024 to 65535")
+    return port
+
+
+def main() -> None:
+    try:
+        host = _validate_loopback_host(os.environ.get("NETPROBE_HOST", "127.0.0.1"))
+        port = _validate_port(os.environ.get("NETPROBE_PORT", "8088"))
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     server = NetprobeHTTPServer((host, port), Handler)
     sys.stderr.write(f"netprobe listening on {host}:{port}\n")
     try:

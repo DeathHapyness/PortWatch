@@ -5,10 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   sandbox-policy:
     name: Dev sandbox (static security policy)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -19,6 +23,7 @@ jobs:
   netprobe:
     name: Netprobe (stdlib tests)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -29,6 +34,7 @@ jobs:
   smoke:
     name: Dev sandbox smoke test (compose + real backend + /health)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Runs the real infra/dev/docker-compose.dev.yml stack (docker-socket-proxy
     # + netprobe + a throwaway fixture container) against the runner's own
     # Docker daemon — never the user's homelab (see CLAUDE.md: this IS "the
@@ -44,7 +50,7 @@ jobs:
           version: "0.12.5"
       - name: Install backend dependencies
         working-directory: apps/backend
-        run: uv sync --all-groups
+        run: uv sync --locked --all-groups
       - name: Validate compose config
         run: docker compose -f infra/dev/docker-compose.dev.yml config >/dev/null
       - name: Bring up dev sandbox (through guard.sh, via make dev-up)
@@ -88,6 +94,7 @@ jobs:
   e2e:
     name: Backend E2E (real sandbox, apps/backend/tests/e2e)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Complements `smoke` above: same real docker-socket-proxy/netprobe
     # stack, but exercised through the pytest suite (auth, containers,
     # networks, ports, host-only listeners via netprobe — see
@@ -102,12 +109,13 @@ jobs:
           version: "0.12.5"
       - name: Install backend dependencies
         working-directory: apps/backend
-        run: uv sync --all-groups
+        run: uv sync --locked --all-groups
       - run: make test-e2e
 
   backend:
     name: Backend (lint, type-check, test)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: apps/backend
@@ -116,7 +124,7 @@ jobs:
       - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           version: "0.12.5"
-      - run: uv sync --all-groups
+      - run: uv sync --locked --all-groups
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy src
@@ -125,6 +133,7 @@ jobs:
   frontend:
     name: Frontend (lint, format, test, build)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: apps/web

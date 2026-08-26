@@ -1,0 +1,65 @@
+name: Relatar um bug
+description: Reporte um comportamento reproduzível que não envolva vulnerabilidade.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Não publique vulnerabilidades, tokens, logs ou dados de um ambiente real.
+        Para segurança, use o link indicado em SECURITY.md.
+  - type: textarea
+    id: description
+    attributes:
+      label: Descrição
+      description: O que aconteceu e qual era o comportamento esperado?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reprodução mínima
+      description: Use apenas dados fictícios ou o sandbox de desenvolvimento.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versão ou commit
+      placeholder: v0.x.y ou SHA do commit
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Componente
+      options:
+        - Backend/API
+        - Collector
+        - Frontend/dashboard
+        - Netprobe
+        - Docker/infraestrutura
+        - Website/documentação
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Ambiente relevante
+      description: Sistema, navegador e versões; remova nomes, IPs e dados privados.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs sanitizados
+      description: Opcional. Remova tokens, labels, variáveis, nomes e endereços reais.
+      render: shell
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Confirmação
+      options:
+        - label: Removi segredos e dados identificáveis deste relato.
+          required: true
+        - label: Este relato não descreve uma vulnerabilidade que deva permanecer privada.
+          required: true

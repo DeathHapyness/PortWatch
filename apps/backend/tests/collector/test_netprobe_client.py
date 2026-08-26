@@ -1,7 +1,11 @@
 """fetch_host_ports (collector/netprobe_client.py) — HTTP, JSON-shape and
-per-entry validation. httpx.get is monkeypatched directly (the module calls
-it as a bare module-level function, not through an injectable client), so
-there's no need for a real server or transport.
+per-entry validation. httpx.stream is monkeypatched directly (the module
+calls it as a bare module-level function, not through an injectable
+client), so there's no need for a real server or transport. A stubbed
+httpx.Response is fully in-memory regardless of how it was obtained, so
+.iter_bytes() on it behaves the same whether or not the real code streams —
+these fakes only need to satisfy the `with httpx.stream(...) as response:`
+context-manager protocol.
 """
 
 from __future__ import annotations
@@ -23,19 +27,36 @@ VALID_ENTRY: dict[str, Any] = {
 }
 
 
+class _FakeStreamContext:
+    """Stands in for httpx.stream(...)'s context manager in tests."""
+
+    def __init__(self, response: httpx.Response) -> None:
+        self._response = response
+
+    def __enter__(self) -> httpx.Response:
+        return self._response
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+
 def _stub_response(monkeypatch: pytest.MonkeyPatch, response: httpx.Response) -> None:
     # raise_for_status() requires a `request` to be attached, even for a 2xx
     # response that will never actually raise — httpx errors out with a
     # RuntimeError otherwise ("request instance has not been set").
     response._request = httpx.Request("GET", f"{NETPROBE_URL}/host-ports")
-    monkeypatch.setattr(netprobe_client.httpx, "get", lambda *args, **kwargs: response)
+    monkeypatch.setattr(
+        netprobe_client.httpx,
+        "stream",
+        lambda *args, **kwargs: _FakeStreamContext(response),
+    )
 
 
 def _stub_get_raises(monkeypatch: pytest.MonkeyPatch, exc: Exception) -> None:
-    def _raise(*args: object, **kwargs: object) -> httpx.Response:
+    def _raise(*args: object, **kwargs: object) -> _FakeStreamContext:
         raise exc
 
-    monkeypatch.setattr(netprobe_client.httpx, "get", _raise)
+    monkeypatch.setattr(netprobe_client.httpx, "stream", _raise)
 
 
 def test_fetch_host_ports_parses_a_valid_response(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -192,3 +213,100 @@ def test_fetch_host_ports_reports_the_index_of_the_failing_entry(
 
     with pytest.raises(NetprobeError, match=r"ports\[1\]"):
         fetch_host_ports(NETPROBE_URL)
+
+
+# --- response-size bound (core/netprobe_client.py's _read_bounded_response) --
+
+
+def test_fetch_host_ports_rejects_a_declared_content_length_over_the_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = httpx.Response(
+        200,
+        json={"ports": []},
+        headers={"content-length": str(netprobe_client.MAX_NETPROBE_RESPONSE_BYTES + 1)},
+    )
+    _stub_response(monkeypatch, response)
+
+    with pytest.raises(NetprobeError, match="exceeds the 1 MiB safety limit"):
+        fetch_host_ports(NETPROBE_URL)
+
+
+def test_fetch_host_ports_rejects_a_negative_content_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = httpx.Response(200, json={"ports": []}, headers={"content-length": "-1"})
+    _stub_response(monkeypatch, response)
+
+    with pytest.raises(NetprobeError, match="exceeds the 1 MiB safety limit"):
+        fetch_host_ports(NETPROBE_URL)
+
+
+def test_fetch_host_ports_rejects_a_non_numeric_content_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = httpx.Response(200, json={"ports": []}, headers={"content-length": "not-a-number"})
+    _stub_response(monkeypatch, response)
+
+    with pytest.raises(NetprobeError, match="invalid Content-Length"):
+        fetch_host_ports(NETPROBE_URL)
+
+
+def test_fetch_host_ports_accepts_a_response_within_the_size_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No content-length header at all — exercises the actual byte-counting
+    # loop rather than the header pre-check.
+    _stub_response(monkeypatch, httpx.Response(200, json={"ports": [VALID_ENTRY]}))
+
+    assert fetch_host_ports(NETPROBE_URL) == [VALID_ENTRY]
+
+
+def test_fetch_host_ports_aborts_an_oversized_stream_without_content_length() -> None:
+    # A monkeypatched fake response can't demonstrate genuine mid-stream
+    # abortion (it's always already fully in memory) — this spins up a real
+    # HTTP server that streams well past the limit with no Content-Length
+    # header (chunked/close-delimited), the scenario the header pre-check
+    # alone can't catch. Also guards against a regression back to a plain
+    # httpx.get(), which reads the whole body before any bound could apply
+    # (verified manually: it did, before this fix switched to httpx.stream).
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    oversized_total = netprobe_client.MAX_NETPROBE_RESPONSE_BYTES * 4
+    sent_before_disconnect: list[int] = []
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - stdlib method name
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            chunk = b"0" * 65536
+            sent = 0
+            try:
+                while sent < oversized_total:
+                    self.wfile.write(chunk)
+                    sent += len(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            finally:
+                sent_before_disconnect.append(sent)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with pytest.raises(NetprobeError, match="exceeds the 1 MiB safety limit"):
+            fetch_host_ports(f"http://127.0.0.1:{port}", timeout=5)
+    finally:
+        server.shutdown()
+        thread.join(timeout=2)
+
+    assert sent_before_disconnect
+    # The client must have given up well before the server finished
+    # producing all `oversized_total` bytes — the actual point of streaming.
+    assert sent_before_disconnect[0] < oversized_total

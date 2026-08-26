@@ -2,7 +2,7 @@
 # backend (FastAPI etc.) de propósito: função única, superfície mínima.
 # Único componente do PortWatch autorizado a usar network_mode: host, e por
 # isso não tem NENHUM acesso ao socket Docker (ver docs/adr/0003).
-FROM python:3.12-alpine@sha256:d09d15e60962ca365d1cd544a48773bac9d33f2fb1b00f2aa0deec78ade7dc31
+FROM python:3.14-alpine@sha256:05b2b8b732ecd268fee8727a369f936f022d1321b59befd13c30ede22769dcdc
 
 # Usuário não-root dedicado. Leitura de /proc/net/{tcp,udp}{,6} não exige
 # privilégio nenhum (esses arquivos são world-readable no namespace de rede

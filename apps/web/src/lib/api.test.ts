@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError, api, type ProblemDetail } from './api'
+import { ApiError, api, formatProblemDetail, type ProblemDetail } from './api'
 
 const fetchMock = vi.fn<typeof fetch>()
 
@@ -194,5 +194,99 @@ describe('typed API client', () => {
     )
 
     await expect(api.systemSummary()).rejects.toBeInstanceOf(SyntaxError)
+  })
+
+  it('uses formatProblemDetail(detail) for the thrown error message when detail is a FastAPI 422 validation array', async () => {
+    // The backend's `detail` on ProblemDetail is `Any` (core/schemas.py) — a
+    // 422 response's detail is FastAPI's RequestValidationError.errors(), a
+    // list of {loc, msg, type}, not a string. Rendering it directly used to
+    // crash React ("Objects are not valid as a React child"); the message
+    // built for ApiError must go through the same formatter.
+    fetchMock.mockResolvedValue(
+      response(
+        JSON.stringify({
+          type: 'about:blank',
+          title: 'Validation Error',
+          status: 422,
+          detail: [{ loc: ['query', 'range_start'], msg: 'value is not a valid integer' }],
+          request_id: 'req-1',
+        }),
+        { status: 422, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    )
+
+    await expect(api.ports()).rejects.toMatchObject({
+      message: 'query.range_start: value is not a valid integer',
+    })
+  })
+})
+
+describe('formatProblemDetail', () => {
+  it('returns null for a null or undefined detail', () => {
+    expect(formatProblemDetail(null)).toBeNull()
+    expect(formatProblemDetail(undefined)).toBeNull()
+  })
+
+  it('returns null for an empty or whitespace-only string', () => {
+    expect(formatProblemDetail('')).toBeNull()
+    expect(formatProblemDetail('   ')).toBeNull()
+  })
+
+  it('trims and returns a normal string detail unchanged', () => {
+    expect(formatProblemDetail('  container not found  ')).toBe('container not found')
+  })
+
+  it('truncates an overly long string detail with an ellipsis', () => {
+    const long = 'x'.repeat(600)
+
+    const result = formatProblemDetail(long)
+
+    expect(result).toHaveLength(500)
+    expect(result?.endsWith('…')).toBe(true)
+    expect(result?.startsWith('x'.repeat(499))).toBe(true)
+  })
+
+  it('formats a single FastAPI validation issue with its field path', () => {
+    const detail = [{ loc: ['body', 'port'], msg: 'value is not a valid integer' }]
+
+    expect(formatProblemDetail(detail)).toBe('body.port: value is not a valid integer')
+  })
+
+  it('joins multiple validation issues and includes numeric list indices in the path', () => {
+    const detail = [
+      { loc: ['body', 'items', 0, 'port'], msg: 'field required' },
+      { loc: ['query', 'range_start'], msg: 'value is not a valid integer' },
+    ]
+
+    expect(formatProblemDetail(detail)).toBe(
+      'body.items.0.port: field required; query.range_start: value is not a valid integer',
+    )
+  })
+
+  it('omits the field path when loc is absent, keeping just the message', () => {
+    expect(formatProblemDetail([{ msg: 'something went wrong' }])).toBe('something went wrong')
+  })
+
+  it('filters out malformed issues but keeps the well-formed ones', () => {
+    const detail = [{ msg: 'first problem' }, { loc: ['x'] }, 'not an object', 42, null]
+
+    expect(formatProblemDetail(detail)).toBe('first problem')
+  })
+
+  it('falls back to JSON.stringify when every array entry is unusable', () => {
+    const detail = ['not an object', 42, null]
+
+    expect(formatProblemDetail(detail)).toBe(JSON.stringify(detail))
+  })
+
+  it('falls back to JSON.stringify for a plain object detail', () => {
+    const detail = { unexpected: 'shape' }
+
+    expect(formatProblemDetail(detail)).toBe(JSON.stringify(detail))
+  })
+
+  it('falls back to JSON.stringify for a bare number or boolean detail', () => {
+    expect(formatProblemDetail(404)).toBe('404')
+    expect(formatProblemDetail(false)).toBe('false')
   })
 })

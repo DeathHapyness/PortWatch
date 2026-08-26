@@ -8,7 +8,11 @@ from typing import Any
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect, status
 
 from portwatch_backend.core.auth import validate_api_token
-from portwatch_backend.core.events import BroadcasterClosedError, SnapshotBroadcaster
+from portwatch_backend.core.events import (
+    BroadcasterClosedError,
+    SnapshotBroadcaster,
+    SubscriberLimitError,
+)
 
 AUTH_MESSAGE_TIMEOUT_SECONDS = 5.0
 MAX_AUTH_MESSAGE_BYTES = 4 * 1024
@@ -123,3 +127,8 @@ async def snapshot_events(websocket: WebSocket) -> None:
     except BroadcasterClosedError:
         with suppress(WebSocketDisconnect):
             await websocket.close(code=status.WS_1001_GOING_AWAY)
+    except SubscriberLimitError:
+        # 1013 asks a well-behaved client to retry later. The dashboard already
+        # reconnects with exponential backoff and keeps polling in parallel.
+        with suppress(WebSocketDisconnect):
+            await websocket.close(code=status.WS_1013_TRY_AGAIN_LATER)

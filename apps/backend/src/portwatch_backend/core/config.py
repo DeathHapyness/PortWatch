@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # Collector tuning
     collector_poll_interval_seconds: float = 30.0
 
+    # Bound the per-process fan-out resources used by /api/v1/events. Each
+    # subscriber owns an asyncio queue and two tasks while connected.
+    websocket_max_subscribers: int = 128
+
     # Downstream dependencies (wired up from Phase 3 onward)
     docker_proxy_url: str = "http://docker-socket-proxy:2375"
     netprobe_url: str | None = None  # None => host-port scanning disabled
@@ -67,6 +71,13 @@ class Settings(BaseSettings):
         if not math.isfinite(interval) or interval <= 0:
             raise ValueError("collector_poll_interval_seconds must be finite and greater than zero")
         return interval
+
+    @field_validator("websocket_max_subscribers")
+    @classmethod
+    def _validate_websocket_max_subscribers(cls, limit: int) -> int:
+        if not 1 <= limit <= 10_000:
+            raise ValueError("websocket_max_subscribers must be between 1 and 10000")
+        return limit
 
     @field_validator("port_range_start", "port_range_end")
     @classmethod

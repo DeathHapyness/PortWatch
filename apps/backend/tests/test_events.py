@@ -13,7 +13,11 @@ from portwatch_backend.api.events import MAX_AUTH_MESSAGE_BYTES, MAX_AUTH_TOKEN_
 from portwatch_backend.app import create_app
 from portwatch_backend.collector.state import SnapshotStore
 from portwatch_backend.core.config import Settings
-from portwatch_backend.core.events import BroadcasterClosedError, SnapshotBroadcaster
+from portwatch_backend.core.events import (
+    BroadcasterClosedError,
+    SnapshotBroadcaster,
+    SubscriberLimitError,
+)
 
 NOW = datetime(2026, 8, 24, 18, 0, tzinfo=UTC)
 
@@ -374,3 +378,73 @@ async def test_websocket_rejects_a_whitespace_only_token(monkeypatch: pytest.Mon
     closed = await _connect_and_send_first_message(monkeypatch, json.dumps({"token": "   "}))
 
     assert closed == {"type": "websocket.close", "code": 1008, "reason": ""}
+
+
+# --- subscriber limit (resource-exhaustion hardening) ----------------------
+
+
+def test_broadcaster_rejects_a_non_positive_max_subscribers() -> None:
+    with pytest.raises(ValueError, match="at least 1"):
+        SnapshotBroadcaster(max_subscribers=0)
+
+
+async def test_subscribe_raises_once_the_limit_is_reached() -> None:
+    broadcaster = SnapshotBroadcaster(max_subscribers=1)
+
+    async with broadcaster.subscribe():
+        with pytest.raises(SubscriberLimitError):
+            async with broadcaster.subscribe():
+                pass
+
+
+async def test_a_freed_slot_can_be_reused_after_the_limit_was_hit() -> None:
+    broadcaster = SnapshotBroadcaster(max_subscribers=1)
+
+    async with broadcaster.subscribe():
+        with pytest.raises(SubscriberLimitError):
+            async with broadcaster.subscribe():
+                pass
+
+    # The first subscription's context manager has exited (slot freed) — a
+    # new one must succeed rather than staying rejected forever.
+    async with broadcaster.subscribe():
+        pass
+
+
+async def test_rejecting_over_the_limit_does_not_leak_a_phantom_subscriber() -> None:
+    # A rejected subscribe() must not have added itself to the set it just
+    # checked — otherwise the limit would ratchet down permanently.
+    broadcaster = SnapshotBroadcaster(max_subscribers=1)
+
+    async with broadcaster.subscribe():
+        for _ in range(5):
+            with pytest.raises(SubscriberLimitError):
+                async with broadcaster.subscribe():
+                    pass
+
+    async with broadcaster.subscribe():
+        pass
+
+
+async def test_websocket_closes_with_1013_once_the_subscriber_limit_is_reached() -> None:
+    app = create_app()
+    app.state.event_broadcaster = SnapshotBroadcaster(max_subscribers=1)
+
+    # First connection takes the only slot and stays open.
+    first_inbound, first_outbound, first_connection = await _open_connection(app)
+    first_accepted = await asyncio.wait_for(first_outbound.get(), timeout=1)
+    assert first_accepted["type"] == "websocket.accept"
+
+    # Second connection is accepted (auth happens before subscribing) but
+    # then rejected for being over the concurrent-subscriber limit.
+    _second_inbound, second_outbound, second_connection = await _open_connection(app)
+    second_accepted = await asyncio.wait_for(second_outbound.get(), timeout=1)
+    assert second_accepted["type"] == "websocket.accept"
+    second_closed = await asyncio.wait_for(second_outbound.get(), timeout=1)
+    await asyncio.wait_for(second_connection, timeout=1)
+
+    assert second_closed == {"type": "websocket.close", "code": 1013, "reason": ""}
+    assert second_connection.exception() is None
+
+    await first_inbound.put({"type": "websocket.disconnect", "code": 1000})
+    await asyncio.wait_for(first_connection, timeout=1)

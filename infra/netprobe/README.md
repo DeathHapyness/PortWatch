@@ -86,8 +86,14 @@ depois validado dentro do `docker-dev-compose.dev.yml`):
 | `cap_drop: [ALL]` | sim, nenhuma capability devolvida | Confirmado por teste: com todas as capabilities derrubadas, `GET /host-ports` continua respondendo com dados reais. Não há `cap_add`. |
 | `security_opt: no-new-privileges:true` | sim | Sem binários setuid envolvidos; não há motivo para escalar privilégio em tempo de execução. |
 | `network_mode: host` | sim (único componente autorizado, ver ADR-0003) | É o requisito funcional: sem isso, `/proc/net/*` mostraria apenas a netns isolada do container, não a do host. |
-| Bind de rede | `127.0.0.1:8088` (hardcoded por padrão via `NETPROBE_HOST`/`NETPROBE_PORT`) | Como `network_mode: host` não passa por `ports:` do Compose (o mapeamento de portas não se aplica nesse modo), o próprio processo precisa se vincular a loopback para não ficar acessível pela LAN — é o processo, não o Compose, quem garante isso aqui. |
+| Bind de rede | IP de loopback, `127.0.0.1:8088` por padrão, validado no startup | Como `network_mode: host` não passa por `ports:` do Compose (o mapeamento de portas não se aplica nesse modo), o próprio processo recusa `NETPROBE_HOST` que não seja um IP de loopback. `NETPROBE_PORT` também é limitado a 1024–65535 para preservar a execução sem capabilities. |
 | Acesso ao socket Docker | nenhum | Não montado, não referenciado, não necessário — função única. |
+
+Todas as respostas incluem `Cache-Control: no-store` e
+`X-Content-Type-Options: nosniff`. Falhas inesperadas ao ler as tabelas do
+kernel retornam `503` sem expor caminhos ou detalhes internos ao cliente. O
+cliente do Collector, por sua vez, rejeita respostas maiores que 1 MiB antes
+de decodificar o JSON, inclusive quando o servidor omite `Content-Length`.
 
 ## Como o backend deve consumir
 

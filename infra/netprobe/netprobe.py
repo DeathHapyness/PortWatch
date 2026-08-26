@@ -22,6 +22,7 @@ import socket
 import sys
 import threading
 import time
+from ipaddress import ip_address
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # /proc/net/{tcp,udp}{,6} table paths and the address family each one holds.
@@ -44,6 +45,10 @@ TCP_STATE_LISTEN = "0A"
 # small: every request only reads /proc and returns a compact JSON document.
 CONNECTION_TIMEOUT_SECONDS = 5.0
 MAX_CONCURRENT_REQUESTS = 32
+
+
+class NetprobeReadError(RuntimeError):
+    """Raised when a required kernel socket table cannot be read."""
 
 
 def _decode_ipv4(hex_ip: str) -> str:
@@ -80,6 +85,8 @@ def read_occupied_ports() -> list[dict]:
         except FileNotFoundError:
             # IPv6 disabled on this host, or an unexpected kernel config.
             continue
+        except OSError as exc:
+            raise NetprobeReadError(f"failed to read kernel socket table {path}") from exc
 
         for line in lines[1:]:  # skip header row
             fields = line.split()
@@ -122,12 +129,19 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self) -> None:  # noqa: N802 (stdlib method name)
         if self.path == "/host-ports":
-            ports = read_occupied_ports()
+            try:
+                ports = read_occupied_ports()
+            except NetprobeReadError:
+                self.log_error("failed to read host socket tables")
+                self._send_json(503, {"error": "host port data unavailable"})
+                return
             self._send_json(
                 200,
                 {
@@ -168,6 +182,9 @@ class NetprobeHTTPServer(ThreadingHTTPServer):
     ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be at least 1")
+        self.address_family = (
+            socket.AF_INET6 if ip_address(server_address[0]).version == 6 else socket.AF_INET
+        )
         self._worker_slots = threading.BoundedSemaphore(max_workers)
         super().__init__(server_address, handler_class)
 
@@ -195,7 +212,19 @@ class NetprobeHTTPServer(ThreadingHTTPServer):
 
 def main() -> None:
     host = os.environ.get("NETPROBE_HOST", "127.0.0.1")
-    port = int(os.environ.get("NETPROBE_PORT", "8088"))
+    try:
+        address = ip_address(host)
+    except ValueError as exc:
+        raise SystemExit("NETPROBE_HOST must be a loopback IP address") from exc
+    if not address.is_loopback:
+        raise SystemExit("NETPROBE_HOST must be a loopback IP address")
+
+    try:
+        port = int(os.environ.get("NETPROBE_PORT", "8088"))
+    except ValueError as exc:
+        raise SystemExit("NETPROBE_PORT must be an integer from 1024 to 65535") from exc
+    if not 1024 <= port <= 65535:
+        raise SystemExit("NETPROBE_PORT must be an integer from 1024 to 65535")
     server = NetprobeHTTPServer((host, port), Handler)
     sys.stderr.write(f"netprobe listening on {host}:{port}\n")
     try:

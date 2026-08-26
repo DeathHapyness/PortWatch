@@ -8,6 +8,7 @@ scanning and reports host_ports_enabled=False, per core/config.py.
 """
 
 import ipaddress
+import json
 from typing import Any, TypedDict
 
 import httpx
@@ -22,6 +23,27 @@ class HostPortEntry(TypedDict):
 
 class NetprobeError(RuntimeError):
     """Raised when netprobe is configured but unreachable or returns garbage."""
+
+
+MAX_NETPROBE_RESPONSE_BYTES = 1_048_576
+
+
+def _read_bounded_response(response: httpx.Response) -> bytes:
+    content_length = response.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared_size = int(content_length)
+        except ValueError as exc:
+            raise NetprobeError("netprobe returned an invalid Content-Length header") from exc
+        if declared_size < 0 or declared_size > MAX_NETPROBE_RESPONSE_BYTES:
+            raise NetprobeError("netprobe response exceeds the 1 MiB safety limit")
+
+    body = bytearray()
+    for chunk in response.iter_bytes():
+        body.extend(chunk)
+        if len(body) > MAX_NETPROBE_RESPONSE_BYTES:
+            raise NetprobeError("netprobe response exceeds the 1 MiB safety limit")
+    return bytes(body)
 
 
 def _validate_host_port_entry(value: Any, *, index: int) -> HostPortEntry:
@@ -71,10 +93,10 @@ def fetch_host_ports(netprobe_url: str, *, timeout: float = 5.0) -> list[HostPor
     try:
         response = httpx.get(url, timeout=timeout)
         response.raise_for_status()
-        payload = response.json()
+        payload = json.loads(_read_bounded_response(response))
     except httpx.HTTPError as exc:
         raise NetprobeError(f"netprobe request to {url} failed: {exc}") from exc
-    except ValueError as exc:  # invalid JSON
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise NetprobeError(f"netprobe response from {url} was not valid JSON: {exc}") from exc
 
     if not isinstance(payload, dict):

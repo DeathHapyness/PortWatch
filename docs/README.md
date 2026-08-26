@@ -1,6 +1,8 @@
 # Documentação do PortWatch
 
 - [`adr/`](./adr/) — decisões arquiteturais aceitas.
+- [`reference/configuration.md`](./reference/configuration.md) — toda variável
+  de ambiente do backend, netprobe e frontend, com defaults e limites.
 - [`security/threat-model.md`](./security/threat-model.md) — ativos, fronteiras
   de confiança, ameaças e riscos residuais.
 - [`security/operator-guide.md`](./security/operator-guide.md) — requisitos

@@ -2,13 +2,15 @@
 
 Plataforma de monitoramento de homelab — Docker, containers e portas de rede.
 
-Status atual: **Fase 4 — API real (concluída)**, mais várias rodadas de
-hardening de segurança/robustez em preparação para publicação pública sob
-licença MIT. Gaps essenciais do roadmap original estão fechados — o que
-resta é maturidade contínua. Arquitetura completa e roadmap:
+**Status:** funcional e pronto para uso pessoal em loopback hoje. Todos os
+gaps essenciais do roadmap original estão fechados; o projeto está em
+preparação ativa para publicação pública sob licença MIT — o que falta para
+esse próximo passo (não para o uso atual) está rastreado em
+[`docs/release/public-release-checklist.md`](docs/release/public-release-checklist.md).
+Arquitetura completa e roadmap:
 https://claude.ai/code/artifact/b41be8c8-2963-4ef8-a4f7-b984b68407a8.
-Modelo de ameaça, guia de implantação segura e checklist de release público
-em [`docs/README.md`](docs/README.md).
+Modelo de ameaça, guia de implantação segura e referência de configuração em
+[`docs/README.md`](docs/README.md).
 
 **Backend.** O Collector coleta containers, redes e portas do sandbox via
 `docker-socket-proxy`/`netprobe`, publica snapshots atômicos em memória
@@ -64,19 +66,20 @@ limitada, sem cache) e logs estruturados em JSON com `request_id`
 correlacionado por requisição e redação best-effort de segredos; tracing
 (OpenTelemetry) segue fora do MVP por decisão de escopo.
 
-**Ressalva de segurança anterior, corrigida:** até 2026-08-26,
-`VITE_API_TOKEN` era embutido em texto puro no bundle JS do frontend no
-build (comportamento padrão do Vite para `import.meta.env.VITE_*`) — em
-loopback isso nunca importou, mas fora disso qualquer um que carregasse a
-página conseguia extrair o token direto do JS servido. Corrigido: o token
-agora é digitado em runtime via `ApiTokenDialog` (ícone de chave no header)
-e guardado em `localStorage` por navegador, nunca no bundle. `VITE_API_TOKEN`
-continua funcionando como fallback de conveniência para desenvolvimento
-local (só o usuário da própria máquina vê o valor de qualquer forma), mas
-não é mais o caminho recomendado nem necessário fora de loopback.
+**Ressalva de segurança anterior, corrigida em 2026-08-26:** o token do
+frontend costumava ser embutido em texto puro no bundle JS de produção
+(`VITE_API_TOKEN`, comportamento padrão do Vite) — inofensivo em loopback,
+mas extraível por qualquer um que carregasse a página fora dele. Corrigido:
+o token agora é digitado em runtime via `ApiTokenDialog` (ícone de chave no
+header) e guardado em `localStorage` por navegador. Detalhes completos em
+[`docs/security/threat-model.md`](docs/security/threat-model.md).
 
 Decisões arquiteturais registradas em `docs/adr/`. Para publicação pública,
 ver `CONTRIBUTING.md`, `.github/SECURITY.md` e `docs/README.md`.
+
+## Licença
+
+[MIT](LICENSE).
 
 ## Estrutura
 
@@ -134,6 +137,8 @@ cd apps/backend
 export PORTWATCH_DOCKER_PROXY_URL=http://127.0.0.1:2375
 export PORTWATCH_NETPROBE_URL=http://127.0.0.1:8088
 uv run uvicorn portwatch_backend.app:app --reload --port 8000
+# Referência completa de todas as variáveis, defaults e limites:
+# docs/reference/configuration.md
 
 # Frontend — http://127.0.0.1:5173, proxy /api/* -> backend acima
 # (proxy inclui upgrade de WebSocket para /api/v1/events)
@@ -154,6 +159,7 @@ Checagens de qualidade:
 ```sh
 cd apps/backend && uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest
 cd apps/web     && pnpm run lint && pnpm run format:check && pnpm run test && pnpm run build
+python -m unittest discover -s infra/netprobe/tests -v   # mudanças em infra/netprobe
 ```
 
 `uv run pytest` acima nunca toca Docker (exclui o marker `e2e` por padrão —
@@ -162,4 +168,13 @@ real (sobe/derruba a stack sozinha, mesmo guard do `make dev-up`):
 
 ```sh
 make test-e2e
+```
+
+Para construir e validar a imagem de produção do backend localmente
+(Docker local, nunca o homelab):
+
+```sh
+cd apps/backend && docker build -t portwatch-backend .
+docker run --rm -p 8000:8000 -e PORTWATCH_API_TOKEN=<algo> portwatch-backend
+curl http://127.0.0.1:8000/health
 ```

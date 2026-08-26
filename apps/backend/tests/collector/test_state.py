@@ -114,6 +114,130 @@ def test_invalid_snapshot_values_are_rejected(
         operation()
 
 
+def test_find_container_returns_none_when_nothing_has_been_published() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+
+    assert store.find_container("anything") is None
+
+
+def test_find_container_matches_by_id_or_name() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    container = ContainerDetail(
+        id="abc123",
+        name="fixture-web",
+        image="nginx:alpine",
+        status=ContainerStatus.running,
+        created_at=NOW,
+    )
+    store.publish(containers=[container])
+
+    assert store.find_container("abc123").name == "fixture-web"  # type: ignore[union-attr]
+    assert store.find_container("fixture-web").id == "abc123"  # type: ignore[union-attr]
+
+
+def test_find_container_returns_none_for_an_unknown_identifier() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    store.publish(containers=[make_container("first")])
+
+    assert store.find_container("does-not-exist") is None
+
+
+def test_find_container_first_list_entry_wins_an_identifier_collision() -> None:
+    # first.name ("collide") equals second.id — the original linear scan
+    # (`if identifier in (c.id, c.name)`) would hit `first` before ever
+    # reaching `second`; the index must preserve that exact ordering.
+    store = SnapshotStore(clock=lambda: NOW)
+    first = ContainerDetail(
+        id="x",
+        name="collide",
+        image="nginx:alpine",
+        status=ContainerStatus.running,
+        created_at=NOW,
+    )
+    second = ContainerDetail(
+        id="collide",
+        name="y",
+        image="nginx:alpine",
+        status=ContainerStatus.running,
+        created_at=NOW,
+    )
+    store.publish(containers=[first, second])
+
+    assert store.find_container("collide").id == "x"  # type: ignore[union-attr]
+
+
+def test_find_container_result_is_isolated_from_the_store() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    store.publish(containers=[make_container("original")])
+
+    found = store.find_container("original")
+    assert found is not None
+    found.name = "mutated"
+
+    assert store.find_container("original").name == "original"  # type: ignore[union-attr]
+
+
+def test_find_container_only_reflects_the_latest_generation() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    store.publish(containers=[make_container("first")])
+    store.publish(containers=[make_container("second")])
+
+    assert store.find_container("first") is None
+    assert store.find_container("second") is not None
+
+
+def test_find_network_returns_none_when_nothing_has_been_published() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+
+    assert store.find_network("anything") is None
+
+
+def test_find_network_matches_by_id_or_name() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    network = NetworkSummary(id="net-1", name="dev-net", driver="bridge", scope="local")
+    store.publish(networks=[network])
+
+    assert store.find_network("net-1").name == "dev-net"  # type: ignore[union-attr]
+    assert store.find_network("dev-net").id == "net-1"  # type: ignore[union-attr]
+
+
+def test_find_network_result_is_isolated_from_the_store() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    store.publish(networks=[make_network("original")])
+
+    found = store.find_network("original")
+    assert found is not None
+    found.name = "mutated"
+
+    assert store.find_network("original").name == "original"  # type: ignore[union-attr]
+
+
+def test_concurrent_find_container_stays_consistent_with_concurrent_publish() -> None:
+    # The index swap (self._containers_by_identifier) and the snapshot swap
+    # (self._snapshot) happen under the same lock in publish() — whenever
+    # find_container hits, the container it returns must actually belong to
+    # *some* generation's owner string, never a torn/mixed one.
+    store = SnapshotStore(clock=lambda: NOW)
+    publication_count = 100
+
+    def publish(index: int) -> None:
+        owner = f"generation-{index}"
+        store.publish(containers=[make_container(owner)])
+
+    def find_repeatedly() -> None:
+        for index in range(publication_count):
+            owner = f"generation-{index}"
+            found = store.find_container(owner)
+            if found is not None:
+                assert found.name == owner
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        publishers = [executor.submit(publish, index) for index in range(publication_count)]
+        finders = [executor.submit(find_repeatedly) for _ in range(4)]
+        for future in [*publishers, *finders]:
+            future.result()
+
+
 def test_concurrent_readers_never_observe_a_mixed_generation() -> None:
     store = SnapshotStore(clock=lambda: NOW)
     publication_count = 100

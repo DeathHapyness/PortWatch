@@ -26,8 +26,7 @@ async def list_networks(request: Request) -> list[NetworkDetail]:
 
 @router.get("/{network_id}", summary="Network detail")
 async def get_network(request: Request, network_id: str) -> NetworkDetail:
-    networks = request.app.state.snapshot_store.read().networks
-    for network in networks:
-        if network_id in (network.id, network.name):
-            return _to_detail(network)
+    network = request.app.state.snapshot_store.find_network(network_id)
+    if network is not None:
+        return _to_detail(network)
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="network not found")

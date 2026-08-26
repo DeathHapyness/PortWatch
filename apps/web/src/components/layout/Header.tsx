@@ -1,6 +1,7 @@
-import { Activity, Boxes, Moon, Network, Radio, RefreshCw, Sun } from 'lucide-react'
+import { Activity, Boxes, KeyRound, Moon, Network, Radio, RefreshCw, Sun } from 'lucide-react'
 import * as React from 'react'
 
+import { ApiTokenDialog } from '@/components/layout/ApiTokenDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { SystemSummary } from '@/lib/api'
@@ -49,6 +50,13 @@ export function Header({
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
   }
+
+  const [tokenDialogOpen, setTokenDialogOpen] = React.useState(false)
+  // Bumped every time the dialog opens, so <ApiTokenDialog key=...> remounts
+  // and its lazy useState(() => getApiToken()) re-reads the current token
+  // instead of showing whatever was last typed (including an abandoned,
+  // unsaved edit from a previous open).
+  const [tokenDialogInstance, setTokenDialogInstance] = React.useState(0)
 
   const isHealthy = systemSummary?.portwatch_status === 'ok'
 
@@ -180,8 +188,28 @@ export function Header({
           >
             {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </Button>
+
+          {/* API Token Settings */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              setTokenDialogInstance((n) => n + 1)
+              setTokenDialogOpen(true)
+            }}
+            title="API token"
+            aria-label="API token settings"
+          >
+            <KeyRound className="size-4" />
+          </Button>
         </div>
       </div>
+
+      <ApiTokenDialog
+        key={tokenDialogInstance}
+        open={tokenDialogOpen}
+        onOpenChange={setTokenDialogOpen}
+      />
     </header>
   )
 }

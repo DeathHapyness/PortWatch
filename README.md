@@ -2,72 +2,92 @@
 
 Plataforma de monitoramento de homelab — Docker, containers e portas de rede.
 
-Status atual: **Fase 4 — API real (concluída)**, mais uma rodada de
-hardening de segurança/robustez sobre a Fase 9. Backend: o Collector coleta
-containers, redes e portas do sandbox via `docker-socket-proxy`/`netprobe`,
-publica snapshots atômicos em memória e expõe readiness real (derivada das
-mesmas `Settings` capturadas no startup, não recalculada a cada request);
-todas as rotas (`containers`, `networks`, `system`, `ports`) leem esses
-snapshots — nenhuma retorna mais dados de exemplo. Nem o Docker nem o
-netprobe são mais confiados às cegas: as respostas de ambos são validadas
-por shape antes de virar estado interno (ver `collector/parsing.py`'s
-`DockerPayloadError` e `collector/netprobe_client.py`), então um
-`docker-socket-proxy` comprometido ou um netprobe com bug não corrompe o
-snapshot nem derruba o Collector. `core/config.py` valida limites em tudo
-que vem de variável de ambiente (portas, intervalo de poll, URLs,
-log level, token). Autenticação por token estático (ADR-0004), erros no
-contrato RFC 7807 completo (incluindo validação 422 e `request_id` por
-requisição), e labels/env de containers redigidos por padrão (PW-03).
-WebSocket `/api/v1/events` transmite invalidações de snapshot em tempo real
-com desligamento gracioso (fecha com 1001, não derruba a conexão, quando a
-app para); autentica via header `Authorization` (clientes não-browser) ou,
-quando ausente, via `{"token": "..."}` como primeira mensagem da conexão
-(browsers, que não podem setar headers customizados no handshake), com
-limites de tamanho de mensagem/token e rejeição de payload malformado — ver
-`docs/adr/0006-websocket-first-message-auth.md`. Frontend: dashboard
-funcional (Overview/Containers/Networks/Ports) consumindo as APIs REST via
-TanStack Query (autenticadas com o mesmo bearer token quando configurado —
-ver ressalva de segurança abaixo) e também `/api/v1/events`
+Status atual: **Fase 4 — API real (concluída)**, mais várias rodadas de
+hardening de segurança/robustez em preparação para publicação pública sob
+licença MIT. Gaps essenciais do roadmap original estão fechados — o que
+resta é maturidade contínua. Arquitetura completa e roadmap:
+https://claude.ai/code/artifact/b41be8c8-2963-4ef8-a4f7-b984b68407a8.
+Modelo de ameaça, guia de implantação segura e checklist de release público
+em [`docs/README.md`](docs/README.md).
+
+**Backend.** O Collector coleta containers, redes e portas do sandbox via
+`docker-socket-proxy`/`netprobe`, publica snapshots atômicos em memória
+(agora com índice O(1) para lookup por id/nome — `collector/state.py`'s
+`find_container`/`find_network` — e uma visão-resumo pré-computada,
+`SnapshotOverview`, para `/health/ready` e `/api/v1/system/summary`) e
+expõe readiness real. Todas as rotas leem esses snapshots — nenhuma retorna
+dados de exemplo. Nem o Docker nem o netprobe são confiados às cegas: as
+respostas de ambos são validadas por shape antes de virar estado interno
+(`DockerPayloadError`, `collector/netprobe_client.py`), e o cliente do
+netprobe agora usa `httpx.stream` para abortar uma resposta acima de 1 MiB
+durante a transferência, não depois de já ter baixado tudo. Um ciclo do
+Collector tem orçamento de tempo e limites de contagem configuráveis
+(`PORTWATCH_COLLECTOR_CYCLE_BUDGET_SECONDS`/`MAX_CONTAINERS`/`MAX_NETWORKS`
+— ADR-0007); estourar qualquer um falha o ciclo sem publicar um snapshot
+truncado. `core/config.py` valida limites em tudo que vem de variável de
+ambiente, incluindo o limite de assinantes WebSocket simultâneos
+(`PORTWATCH_WEBSOCKET_MAX_SUBSCRIBERS`). Autenticação por token estático
+(ADR-0004) com um `X-Request-Id` client-supplied agora restrito a um token
+ASCII curto antes de entrar em logs/header de resposta; erros no contrato
+RFC 7807 completo; labels/env de containers redigidos por padrão (PW-03).
+Respostas de `/api/v1/*` e `/metrics` levam `Cache-Control: no-store`; todo
+response leva `X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY`.
+Imagem de container de produção hardened em `apps/backend/Dockerfile`
+(non-root, multi-stage, `--no-server-header`, recusa iniciar fora de
+loopback sem token).
+
+**WebSocket.** `/api/v1/events` transmite invalidações de snapshot em tempo
+real com desligamento gracioso; autentica via header `Authorization`
+(clientes não-browser) ou, quando ausente, via `{"token": "..."}` como
+primeira mensagem da conexão, com limites de tamanho de mensagem/token e
+rejeição de payload malformado — ver
+`docs/adr/0006-websocket-first-message-auth.md`. Conexões simultâneas são
+limitadas por processo (`PORTWATCH_WEBSOCKET_MAX_SUBSCRIBERS`, padrão 128);
+acima do limite, a conexão já autenticada é fechada com 1013.
+
+**Frontend.** Dashboard funcional (Overview/Containers/Networks/Ports)
+consumindo as APIs REST via TanStack Query e `/api/v1/events`
 (`useSnapshotEvents`) para invalidar as queries assim que o Collector
-publica um novo snapshot — o poll continua como fallback. Testes E2E
-(`apps/backend/tests/e2e/`, `make test-e2e`) sobem o sandbox real e validam
-o Collector fim a fim através do `docker-socket-proxy`/`netprobe` de
-verdade. Observabilidade (Fase 9): métricas Prometheus em `GET /metrics`
-(protegido pelo mesmo bearer token, cardinalidade de rota limitada — ver
-`core/metrics.py`) — requests HTTP por rota/status e ciclos do Collector
-(duração, sucesso/falha, geração/containers/portas do snapshot atual) — e
-logs estruturados em JSON com `request_id` correlacionado por requisição e
-redação best-effort de segredos (`core/logging.py`); tracing (OpenTelemetry)
-segue fora do MVP por decisão de escopo. Gaps essenciais do roadmap
-original estão fechados — o que resta é maturidade (mais cobertura de
-testes, pequenas manutenções). Arquitetura completa e roadmap:
-https://claude.ai/code/artifact/b41be8c8-2963-4ef8-a4f7-b984b68407a8
+publica um novo snapshot — o poll continua como fallback. O token da API é
+digitado em runtime pelo ícone de chave no header (`ApiTokenDialog`) e
+guardado só em `localStorage` deste navegador — nunca embutido no bundle
+JS compartilhado (ver ressalva de segurança, agora corrigida, abaixo). Uma
+resposta de validação (422, `detail` como array de erros do FastAPI, não
+string) é formatada com segurança em vez de quebrar a renderização
+(`formatProblemDetail`, `lib/api.ts`).
 
-**Ressalva de segurança conhecida, não corrigida:** `VITE_API_TOKEN` é
-embutido em texto puro no bundle JS do frontend no build (comportamento
-padrão do Vite para `import.meta.env.VITE_*` — confirmado inspecionando
-`dist/assets/*.js`). Em loopback isso não importa (quem tem acesso ao
-processo já tem acesso ao valor da env var). Mas no cenário que o
-ADR-0004 prevê como exigindo token — exposição em LAN/remota — qualquer
-um que carregue a página do dashboard consegue extrair o token direto do
-JS servido, o que o torna inútil como segredo nesse cenário (continua
-barrando acesso direto à API por quem nunca carregou o frontend, mas não
-protege contra quem carregou). Mitigação hoje: a própria ADR-0004 já
-pressupõe uma camada de acesso própria do usuário na frente (Tailscale,
-Authelia) para esse cenário. Correção real ficaria em trocar o token
-embutido no build por um token digitado em runtime e guardado em
-`localStorage` (por navegador, nunca no bundle compartilhado) — não
-implementado ainda, ver `docs/tasks/backlog.md`.
+Testes E2E (`apps/backend/tests/e2e/`, `make test-e2e`) sobem o sandbox
+real e validam o Collector fim a fim através do `docker-socket-proxy`/
+`netprobe` de verdade. Observabilidade: métricas Prometheus em
+`GET /metrics` (protegido pelo mesmo bearer token, cardinalidade de rota
+limitada, sem cache) e logs estruturados em JSON com `request_id`
+correlacionado por requisição e redação best-effort de segredos; tracing
+(OpenTelemetry) segue fora do MVP por decisão de escopo.
 
-Decisões arquiteturais registradas em `docs/adr/`.
+**Ressalva de segurança anterior, corrigida:** até 2026-08-26,
+`VITE_API_TOKEN` era embutido em texto puro no bundle JS do frontend no
+build (comportamento padrão do Vite para `import.meta.env.VITE_*`) — em
+loopback isso nunca importou, mas fora disso qualquer um que carregasse a
+página conseguia extrair o token direto do JS servido. Corrigido: o token
+agora é digitado em runtime via `ApiTokenDialog` (ícone de chave no header)
+e guardado em `localStorage` por navegador, nunca no bundle. `VITE_API_TOKEN`
+continua funcionando como fallback de conveniência para desenvolvimento
+local (só o usuário da própria máquina vê o valor de qualquer forma), mas
+não é mais o caminho recomendado nem necessário fora de loopback.
+
+Decisões arquiteturais registradas em `docs/adr/`. Para publicação pública,
+ver `CONTRIBUTING.md`, `.github/SECURITY.md` e `docs/README.md`.
 
 ## Estrutura
 
 ```
-apps/backend/   FastAPI + Collector (mesmo processo, ver ADR-0001), uv
+apps/backend/   FastAPI + Collector (mesmo processo, ver ADR-0001), uv, Dockerfile de produção
 apps/web/       React + TypeScript + Vite + Tailwind + shadcn/ui
 docs/adr/       Architecture Decision Records
+docs/security/  modelo de ameaça e guia de implantação segura
+docs/release/   checklist de release público
 infra/dev/      sandbox Docker isolado para desenvolvimento
+infra/netprobe/ utilitário host-only de portas ocupadas
 ```
 
 ## Requisitos de desenvolvimento
@@ -118,15 +138,16 @@ uv run uvicorn portwatch_backend.app:app --reload --port 8000
 # Frontend — http://127.0.0.1:5173, proxy /api/* -> backend acima
 # (proxy inclui upgrade de WebSocket para /api/v1/events)
 cd apps/web
-# Só necessário se o backend tiver um token configurado — usado tanto nas
-# chamadas REST (header Authorization) quanto na primeira mensagem do
-# WebSocket (ADR-0006). Ver a ressalva de segurança acima antes de usar
-# isso fora de loopback: este valor é embutido em texto puro no bundle JS
-# do build de produção.
-export VITE_API_TOKEN=<mesmo valor de PORTWATCH_API_TOKEN, se configurado>
 pnpm install
 pnpm dev
 ```
+
+Se o backend tiver um token configurado (`PORTWATCH_API_TOKEN`), digite-o
+no dashboard: ícone de chave no header → cola o token → salva (recarrega a
+página). Ele fica só em `localStorage` deste navegador, nunca no bundle
+JS. `VITE_API_TOKEN` (env var no build) continua funcionando como atalho
+de conveniência para desenvolvimento local, mas não é mais necessário nem
+recomendado.
 
 Checagens de qualidade:
 

@@ -45,6 +45,15 @@ logger = logging.getLogger(__name__)
 ClientFactory = Callable[[], docker.DockerClient]
 
 
+class CollectionBudgetExceeded(RuntimeError):
+    """Raised before an incomplete collection can replace a coherent snapshot."""
+
+
+def _require_budget(deadline: float, *, stage: str) -> None:
+    if time.monotonic() >= deadline:
+        raise CollectionBudgetExceeded(f"collector cycle budget exhausted during {stage}")
+
+
 def _resource_hint(resource: Any) -> str:
     """Return a safe identifier for warnings about malformed Docker objects."""
 
@@ -148,9 +157,11 @@ class Collector:
         failure (e.g. socket-proxy unreachable) so callers/tests can observe
         it directly; the background loop (_run) is what swallows and logs."""
 
+        deadline = time.monotonic() + self._settings.collector_cycle_budget_seconds
         client = self._client_factory()
         try:
-            return self._collect_with_client(client)
+            _require_budget(deadline, stage="Docker client creation")
+            return self._collect_with_client(client, deadline=deadline)
         finally:
             try:
                 client.close()
@@ -162,20 +173,25 @@ class Collector:
                 # nor mask the original exception with a less useful one.
                 logger.warning("collector: failed to close Docker client", exc_info=True)
 
-    def _collect_with_client(self, client: docker.DockerClient) -> CollectorSnapshot:
+    def _collect_with_client(
+        self, client: docker.DockerClient, *, deadline: float
+    ) -> CollectorSnapshot:
         warnings: list[str] = []
 
+        _require_budget(deadline, stage="Docker version discovery")
         try:
             version_info = client.version()
         except DockerException as exc:
             raise RuntimeError(f"docker-socket-proxy unreachable: {exc}") from exc
         docker_version, docker_api_version = _parse_version_info(version_info)
 
-        containers = self._collect_containers(client, warnings)
-        networks = self._collect_networks(client, warnings)
-        host_ports_enabled, host_ports = self._collect_host_ports(warnings)
+        _require_budget(deadline, stage="Docker version discovery")
+        containers = self._collect_containers(client, warnings, deadline=deadline)
+        networks = self._collect_networks(client, warnings, deadline=deadline)
+        host_ports_enabled, host_ports = self._collect_host_ports(warnings, deadline=deadline)
 
         ports = build_port_entries(containers, host_ports)
+        _require_budget(deadline, stage="snapshot assembly")
 
         return self._store.publish(
             containers=containers,
@@ -188,43 +204,70 @@ class Collector:
         )
 
     def _collect_containers(
-        self, client: docker.DockerClient, warnings: list[str]
+        self, client: docker.DockerClient, warnings: list[str], *, deadline: float
     ) -> list[ContainerDetail]:
         summaries: list[ContainerDetail] = []
-        for container in client.containers.list(all=True):
+        _require_budget(deadline, stage="container listing")
+        containers = client.containers.list(all=True)
+        if len(containers) > self._settings.collector_max_containers:
+            raise CollectionBudgetExceeded(
+                "container count exceeds PORTWATCH_COLLECTOR_MAX_CONTAINERS "
+                f"({len(containers)} > {self._settings.collector_max_containers})"
+            )
+        for container in containers:
+            _require_budget(deadline, stage="container inspection")
             try:
                 # list() returns the leaner list-endpoint shape; reload()
                 # re-fetches full GET /containers/{id}/json inspect data
                 # (Config.Labels, State.Health, NetworkSettings.Ports map)
                 # that the parser needs — see parsing.parse_container_detail.
                 container.reload()
+                _require_budget(deadline, stage="container inspection")
                 summaries.append(parse_container_detail(container.attrs))
+            except CollectionBudgetExceeded:
+                raise
             except Exception as exc:  # noqa: BLE001 - isolate one bad container
                 warnings.append(f"skipped container {_resource_hint(container)}: {exc}")
         return summaries
 
     def _collect_networks(
-        self, client: docker.DockerClient, warnings: list[str]
+        self, client: docker.DockerClient, warnings: list[str], *, deadline: float
     ) -> list[NetworkSummary]:
         summaries: list[NetworkSummary] = []
-        for network in client.networks.list():
+        _require_budget(deadline, stage="network listing")
+        networks = client.networks.list()
+        if len(networks) > self._settings.collector_max_networks:
+            raise CollectionBudgetExceeded(
+                "network count exceeds PORTWATCH_COLLECTOR_MAX_NETWORKS "
+                f"({len(networks)} > {self._settings.collector_max_networks})"
+            )
+        for network in networks:
+            _require_budget(deadline, stage="network inspection")
             try:
                 # list() leaves Containers as null (confirmed against a real
                 # daemon, not just docs) — reload() re-fetches full
                 # GET /networks/{id}/json inspect data, same reasoning as
                 # container.reload() above.
                 network.reload()
+                _require_budget(deadline, stage="network inspection")
                 summaries.append(parse_network_summary(network.attrs))
+            except CollectionBudgetExceeded:
+                raise
             except Exception as exc:  # noqa: BLE001 - isolate one bad network
                 warnings.append(f"skipped network {_resource_hint(network)}: {exc}")
         return summaries
 
-    def _collect_host_ports(self, warnings: list[str]) -> tuple[bool, list[HostPortEntry]]:
+    def _collect_host_ports(
+        self, warnings: list[str], *, deadline: float
+    ) -> tuple[bool, list[HostPortEntry]]:
         netprobe_url = self._settings.netprobe_url
         if not netprobe_url:
             return False, []
+        _require_budget(deadline, stage="netprobe request")
         try:
-            return True, fetch_host_ports(netprobe_url)
+            host_ports = fetch_host_ports(netprobe_url)
+            _require_budget(deadline, stage="netprobe request")
+            return True, host_ports
         except NetprobeError as exc:
             warnings.append(f"netprobe unavailable, host ports disabled this cycle: {exc}")
             return False, []

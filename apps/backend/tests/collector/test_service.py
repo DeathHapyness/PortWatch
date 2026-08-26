@@ -8,11 +8,12 @@ import logging
 import threading
 import time
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 
 from portwatch_backend.collector.netprobe_client import NetprobeError
-from portwatch_backend.collector.service import Collector
+from portwatch_backend.collector.service import CollectionBudgetExceeded, Collector
 from portwatch_backend.collector.state import SnapshotStore
 from portwatch_backend.core.config import Settings
 
@@ -316,3 +317,123 @@ def test_a_failing_cycle_does_not_kill_the_background_thread() -> None:
     # First cycle failed (store still at generation 0), later cycles
     # succeeded — the thread must have survived the first failure.
     assert store.read().generation >= 1
+
+
+# --- collection budget and resource caps (ADR-0007) ---------------------------
+
+
+def test_require_budget_does_not_raise_before_the_deadline() -> None:
+    from portwatch_backend.collector.service import _require_budget
+
+    _require_budget(time.monotonic() + 10, stage="some stage")  # must not raise
+
+
+def test_require_budget_raises_once_the_deadline_has_passed() -> None:
+    from portwatch_backend.collector.service import _require_budget
+
+    with pytest.raises(CollectionBudgetExceeded, match="some stage"):
+        _require_budget(time.monotonic() - 1, stage="some stage")
+
+
+def test_collect_once_raises_when_the_cycle_budget_is_already_exhausted() -> None:
+    fake_client = _FakeDockerClient(
+        containers=[_FakeContainer(_container_attrs("fixture-web"))],
+    )
+    settings = Settings(netprobe_url=None, collector_cycle_budget_seconds=1e-9)
+    store = SnapshotStore()
+    collector = Collector(settings, store, client_factory=lambda: fake_client)
+
+    with pytest.raises(CollectionBudgetExceeded):
+        collector.collect_once()
+
+    assert store.read().generation == 0  # no truncated/partial snapshot published
+
+
+def test_collect_once_raises_when_container_count_exceeds_the_configured_max() -> None:
+    containers = [_FakeContainer(_container_attrs(f"c{i}")) for i in range(3)]
+    fake_client = _FakeDockerClient(containers=containers)
+    settings = Settings(netprobe_url=None, collector_max_containers=2)
+    store = SnapshotStore()
+    collector = Collector(settings, store, client_factory=lambda: fake_client)
+
+    with pytest.raises(CollectionBudgetExceeded, match="COLLECTOR_MAX_CONTAINERS"):
+        collector.collect_once()
+
+    assert store.read().generation == 0
+
+
+def test_collect_once_raises_when_network_count_exceeds_the_configured_max() -> None:
+    networks = [_FakeNetwork(_network_attrs(f"n{i}")) for i in range(3)]
+    fake_client = _FakeDockerClient(networks=networks)
+    settings = Settings(netprobe_url=None, collector_max_networks=2)
+    store = SnapshotStore()
+    collector = Collector(settings, store, client_factory=lambda: fake_client)
+
+    with pytest.raises(CollectionBudgetExceeded, match="COLLECTOR_MAX_NETWORKS"):
+        collector.collect_once()
+
+    assert store.read().generation == 0
+
+
+def test_collect_once_succeeds_when_resource_counts_exactly_equal_the_configured_max() -> None:
+    # The check is "> max", so a count exactly at the max must still succeed
+    # — the limit is inclusive.
+    containers = [_FakeContainer(_container_attrs(f"c{i}")) for i in range(2)]
+    fake_client = _FakeDockerClient(containers=containers)
+    settings = Settings(netprobe_url=None, collector_max_containers=2)
+    store = SnapshotStore()
+    collector = Collector(settings, store, client_factory=lambda: fake_client)
+
+    snapshot = collector.collect_once()
+
+    assert len(snapshot.containers) == 2
+
+
+def test_budget_exceeded_during_container_inspection_is_not_downgraded_to_a_warning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regression: CollectionBudgetExceeded is itself an Exception, so the
+    # per-container `except Exception` (which isolates one bad container
+    # without failing the whole cycle) would silently swallow it — turning a
+    # real budget-exceeded abort into "cycle still succeeded, 0 containers"
+    # — unless service.py re-raises it before that broad except runs.
+    fake_client = _FakeDockerClient(containers=[_FakeContainer(_container_attrs("fixture-web"))])
+    settings = Settings(netprobe_url=None)
+    store = SnapshotStore()
+    collector = Collector(settings, store, client_factory=lambda: fake_client)
+    warnings: list[str] = []
+    deadline = 100.0
+
+    # Calls in order for one container: the pre-listing check, the
+    # pre-reload per-item check (both still "before the deadline"), then the
+    # post-reload check inside the try block — trip the budget there.
+    monkeypatch.setattr(
+        "portwatch_backend.collector.service.time.monotonic",
+        Mock(side_effect=[50.0, 60.0, 150.0]),
+    )
+
+    with pytest.raises(CollectionBudgetExceeded):
+        collector._collect_containers(fake_client, warnings, deadline=deadline)
+
+    assert warnings == []
+
+
+def test_budget_exceeded_during_network_inspection_is_not_downgraded_to_a_warning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = _FakeDockerClient(networks=[_FakeNetwork(_network_attrs("portwatch-dev-net"))])
+    settings = Settings(netprobe_url=None)
+    store = SnapshotStore()
+    collector = Collector(settings, store, client_factory=lambda: fake_client)
+    warnings: list[str] = []
+    deadline = 100.0
+
+    monkeypatch.setattr(
+        "portwatch_backend.collector.service.time.monotonic",
+        Mock(side_effect=[50.0, 60.0, 150.0]),
+    )
+
+    with pytest.raises(CollectionBudgetExceeded):
+        collector._collect_networks(fake_client, warnings, deadline=deadline)
+
+    assert warnings == []

@@ -3,6 +3,7 @@ name = "portwatch-backend"
 version = "0.1.0"
 description = "PortWatch backend: FastAPI API + Docker/host collector, single process."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "docker>=7.2,<8",

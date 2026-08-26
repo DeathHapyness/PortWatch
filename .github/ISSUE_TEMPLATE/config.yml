@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Reportar uma vulnerabilidade
+    url: https://github.com/DeathHapyness/PortWatch/security/advisories/new
+    about: Use o canal privado; não publique detalhes de segurança em uma issue.

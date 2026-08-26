@@ -81,6 +81,98 @@ def test_store_detaches_values_from_producers_and_consumers() -> None:
     assert store.read().containers[0].name == "original"
 
 
+def test_read_containers_returns_only_containers() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    store.publish(
+        containers=[make_container("web")],
+        networks=[make_network("dev-net")],
+        ports=[make_port(8080, "web")],
+    )
+
+    containers = store.read_containers()
+
+    assert [c.name for c in containers] == ["web"]
+
+
+def test_read_networks_returns_only_networks() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    store.publish(
+        containers=[make_container("web")],
+        networks=[make_network("dev-net")],
+        ports=[make_port(8080, "web")],
+    )
+
+    networks = store.read_networks()
+
+    assert [n.name for n in networks] == ["dev-net"]
+
+
+def test_read_ports_returns_only_ports() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    store.publish(
+        containers=[make_container("web")],
+        networks=[make_network("dev-net")],
+        ports=[make_port(8080, "web")],
+    )
+
+    ports = store.read_ports()
+
+    assert [p.owner for p in ports] == ["web"]
+
+
+def test_read_containers_networks_ports_are_empty_before_any_publish() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+
+    assert store.read_containers() == ()
+    assert store.read_networks() == ()
+    assert store.read_ports() == ()
+
+
+def test_read_containers_is_detached_from_producers_and_consumers() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    source = make_container("original")
+    store.publish(containers=[source])
+
+    source.name = "producer-mutated"
+    read_back = store.read_containers()
+    read_back[0].name = "consumer-mutated"
+
+    assert store.read_containers()[0].name == "original"
+
+
+def test_read_networks_is_detached_from_producers_and_consumers() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    source = make_network("original")
+    store.publish(networks=[source])
+
+    source.name = "producer-mutated"
+    read_back = store.read_networks()
+    read_back[0].name = "consumer-mutated"
+
+    assert store.read_networks()[0].name == "original"
+
+
+def test_read_ports_is_detached_from_producers_and_consumers() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    source = make_port(8080, "original")
+    store.publish(ports=[source])
+
+    source.owner = "producer-mutated"
+    read_back = store.read_ports()
+    read_back[0].owner = "consumer-mutated"
+
+    assert store.read_ports()[0].owner == "original"
+
+
+def test_read_containers_networks_ports_reflect_the_latest_generation() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    store.publish(containers=[make_container("first")], networks=[make_network("first")])
+    store.publish(containers=[make_container("second")], networks=[make_network("second")])
+
+    assert [c.name for c in store.read_containers()] == ["second"]
+    assert [n.name for n in store.read_networks()] == ["second"]
+
+
 def test_snapshot_staleness_uses_an_explicit_clock() -> None:
     snapshot = CollectorSnapshot(generation=1, collected_at=NOW)
 

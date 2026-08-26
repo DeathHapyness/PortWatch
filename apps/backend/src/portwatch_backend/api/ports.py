@@ -43,10 +43,10 @@ async def list_ports(
     range_end: int | None = None,
 ) -> PortsResponse:
     start, end = _resolve_range(range_start, range_end)
-    snapshot = request.app.state.snapshot_store.read()
+    ports = request.app.state.snapshot_store.read_ports()
     entries = [
         entry
-        for entry in snapshot.ports
+        for entry in ports
         if start <= entry.port <= end and (state is None or entry.state == state)
     ]
     return PortsResponse(range_start=start, range_end=end, entries=entries)
@@ -66,11 +66,9 @@ async def list_available_ports(
             detail=f"limit must be between 1 and {MAX_AVAILABLE_LIMIT}",
         )
 
-    snapshot = request.app.state.snapshot_store.read()
+    ports = request.app.state.snapshot_store.read_ports()
     occupied = {
-        entry.port
-        for entry in snapshot.ports
-        if entry.state in (PortState.host, PortState.published)
+        entry.port for entry in ports if entry.state in (PortState.host, PortState.published)
     }
     entries: list[PortEntry] = []
     for port in range(start, end + 1):

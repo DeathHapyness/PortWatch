@@ -34,7 +34,7 @@ async def list_containers(
     label: str | None = None,
     q: str | None = None,
 ) -> list[ContainerDetail]:
-    containers: tuple[ContainerDetail, ...] = request.app.state.snapshot_store.read().containers
+    containers: tuple[ContainerDetail, ...] = request.app.state.snapshot_store.read_containers()
 
     if status_filter is not None:
         containers = tuple(c for c in containers if c.status == status_filter)

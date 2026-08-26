@@ -117,6 +117,27 @@ class SnapshotStore:
             network = self._networks_by_identifier.get(identifier)
         return network.model_copy(deep=True) if network is not None else None
 
+    def read_containers(self) -> tuple[ContainerDetail, ...]:
+        """Return only containers, without cloning unrelated collections."""
+
+        with self._lock:
+            containers = self._snapshot.containers
+        return tuple(item.model_copy(deep=True) for item in containers)
+
+    def read_networks(self) -> tuple[NetworkSummary, ...]:
+        """Return only networks, without cloning unrelated collections."""
+
+        with self._lock:
+            networks = self._snapshot.networks
+        return tuple(item.model_copy(deep=True) for item in networks)
+
+    def read_ports(self) -> tuple[PortEntry, ...]:
+        """Return only ports, without cloning unrelated collections."""
+
+        with self._lock:
+            ports = self._snapshot.ports
+        return tuple(item.model_copy(deep=True) for item in ports)
+
     def publish(
         self,
         *,

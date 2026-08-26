@@ -2,7 +2,7 @@ import { AlertCircle, RefreshCw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { ApiError } from '@/lib/api'
+import { ApiError, formatProblemDetail } from '@/lib/api'
 
 interface ErrorStateProps {
   error: unknown
@@ -15,6 +15,7 @@ export function ErrorState({ error, onRetry, title = 'Failed to load data' }: Er
   const problem = isApiError ? error.problem : null
   const status = isApiError ? error.status : null
   const message = error instanceof Error ? error.message : String(error)
+  const detail = formatProblemDetail(problem?.detail)
 
   return (
     <Card className="border-destructive/30 bg-destructive/5 text-foreground">
@@ -32,9 +33,9 @@ export function ErrorState({ error, onRetry, title = 'Failed to load data' }: Er
                 <span className="font-semibold text-foreground">Problem:</span> {problem.title}
               </div>
             )}
-            {problem.detail && (
+            {detail && (
               <div className="mt-1">
-                <span className="font-semibold text-foreground">Detail:</span> {problem.detail}
+                <span className="font-semibold text-foreground">Detail:</span> {detail}
               </div>
             )}
             {status && (

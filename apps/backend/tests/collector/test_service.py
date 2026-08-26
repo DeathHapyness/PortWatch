@@ -4,6 +4,7 @@ touch a real daemon or socket-proxy. The real-daemon path is covered
 separately by tests/collector/test_integration.py.
 """
 
+import logging
 import threading
 import time
 from typing import Any
@@ -59,10 +60,12 @@ class _FakeDockerClient:
         containers: list[_FakeContainer] | None = None,
         networks: list[_FakeNetwork] | None = None,
         version_error: Exception | None = None,
+        close_error: Exception | None = None,
     ) -> None:
         self.containers = _FakeContainerCollection(containers or [])
         self.networks = _FakeNetworkCollection(networks or [])
         self._version_error = version_error
+        self._close_error = close_error
         self.closed = False
 
     def version(self) -> dict:
@@ -72,6 +75,8 @@ class _FakeDockerClient:
 
     def close(self) -> None:
         self.closed = True
+        if self._close_error is not None:
+            raise self._close_error
 
 
 def _container_attrs(name: str, *, status: str = "running") -> dict:
@@ -199,6 +204,51 @@ def test_collect_once_raises_when_version_call_fails() -> None:
     # propagate with its own type instead of being mislabeled as "proxy
     # unreachable" (it's still caught one level up by the background loop).
     fake_client = _FakeDockerClient(version_error=DockerException("proxy hiccup"))
+    settings = Settings(netprobe_url=None)
+    store = SnapshotStore()
+    collector = Collector(settings, store, client_factory=lambda: fake_client)
+
+    with pytest.raises(RuntimeError, match="docker-socket-proxy unreachable"):
+        collector.collect_once()
+
+
+# --- collect_once: client.close() failure isolation ---------------------------
+
+
+def test_collect_once_succeeds_even_if_client_close_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    fake_client = _FakeDockerClient(
+        containers=[_FakeContainer(_container_attrs("fixture-web"))],
+        close_error=RuntimeError("connection already closed"),
+    )
+    settings = Settings(netprobe_url=None)
+    store = SnapshotStore()
+    collector = Collector(settings, store, client_factory=lambda: fake_client)
+
+    with caplog.at_level(logging.WARNING):
+        snapshot = collector.collect_once()
+
+    assert snapshot.generation == 1
+    assert store.read().generation == 1
+    assert fake_client.closed is True
+    assert any("failed to close Docker client" in message for message in caplog.messages)
+
+
+def test_collect_once_propagates_the_original_error_even_if_close_also_fails() -> None:
+    # Regression: client.close() raising inside the original bare
+    # `finally: client.close()` replaced whatever exception
+    # _collect_with_client raised (plain Python try/finally semantics) — the
+    # real root cause (e.g. "proxy unreachable") got masked by a much less
+    # useful cleanup error. Manually confirmed against the pre-fix code: this
+    # test failed with "connection already closed" instead of matching
+    # "docker-socket-proxy unreachable".
+    from docker.errors import DockerException
+
+    fake_client = _FakeDockerClient(
+        version_error=DockerException("proxy hiccup"),
+        close_error=RuntimeError("connection already closed"),
+    )
     settings = Settings(netprobe_url=None)
     store = SnapshotStore()
     collector = Collector(settings, store, client_factory=lambda: fake_client)

@@ -912,7 +912,7 @@
         <circle class="hg-node" cx="520" cy="240" r="3.5" />
       </svg>
       <div>
-        <span class="badge h-in"><span class="dot" aria-hidden="true"></span>EM DESENVOLVIMENTO ATIVO · FASE 4</span>
+        <span class="badge h-in"><span class="dot" aria-hidden="true"></span>MVP FUNCIONAL · HARDENING E MATURIDADE</span>
         <h1 class="h-in" id="heroTitle">Sua homelab Docker,<br />finalmente <span class="grad">visível</span>.</h1>
         <p class="lead h-in">O PortWatch descobre containers, portas publicadas e livres no host e redes Docker — e expõe tudo por uma API REST de <strong>somente-observação</strong>. Leitura via proxy; nunca uma escrita no daemon.</p>
         <div class="cta-row h-in">
@@ -1352,7 +1352,7 @@
       <div class="section-head reveal">
         <p class="kicker">10 · Roadmap</p>
         <h2>Onde o projeto está</h2>
-        <p class="section-lead">Acompanhe a linha do tempo — ela se acende conforme você rola.</p>
+        <p class="section-lead">O núcleo do MVP já está funcional. O trabalho atual concentra-se em segurança, robustez, cobertura e maturidade operacional.</p>
       </div>
       <div class="timeline" id="roadmapTimeline">
         <span class="tl-fill" id="tlFill" aria-hidden="true"></span>
@@ -1365,16 +1365,20 @@
           <p>Serviço FastAPI com <code>/api/v1/system/summary</code> consolidando o estado do host.</p>
         </article>
         <article class="tl-item">
-          <div class="tl-top"><h3>Fase 3 — Dashboard web</h3><span class="tl-status st-progress">em andamento</span></div>
-          <p>Interface React para visualizar containers, portas e redes sem sair do navegador.</p>
+          <div class="tl-top"><h3>Fase 3 — Dashboard web</h3><span class="tl-status st-done">concluída</span></div>
+          <p>Interface React consumindo containers, portas, redes e eventos de atualização em tempo real.</p>
         </article>
         <article class="tl-item">
-          <div class="tl-top"><h3>Fase 4 — Sandbox de desenvolvimento</h3><span class="tl-status st-progress">em andamento</span></div>
-          <p>Ambiente isolado com perfil <code>portwatch.env=dev-sandbox</code>: dados simulados para evoluir sem tocar no homelab real.</p>
+          <div class="tl-top"><h3>Fase 4 — API real e sandbox</h3><span class="tl-status st-done">concluída</span></div>
+          <p>Endpoints ligados a snapshots reais e ambiente isolado <code>portwatch.env=dev-sandbox</code> para evoluir sem tocar no homelab.</p>
         </article>
         <article class="tl-item">
-          <div class="tl-top"><h3>Próximo — Histórico &amp; tendências</h3><span class="tl-status st-plan">planejado</span></div>
-          <p>Persistência leve de séries temporais para comparar o estado do host ao longo dos dias (a definir em novo ADR).</p>
+          <div class="tl-top"><h3>Fase 9 — Observabilidade</h3><span class="tl-status st-done">concluída</span></div>
+          <p>Métricas Prometheus, logs JSON correlacionados por request ID e sinais dos ciclos do Collector.</p>
+        </article>
+        <article class="tl-item">
+          <div class="tl-top"><h3>Agora — Hardening e maturidade</h3><span class="tl-status st-progress">em andamento</span></div>
+          <p>Validação de fronteiras, segurança do token, limites de recursos, testes adicionais e manutenção da CI.</p>
         </article>
       </div>
     </section>

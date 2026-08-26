@@ -152,7 +152,15 @@ class Collector:
         try:
             return self._collect_with_client(client)
         finally:
-            client.close()
+            try:
+                client.close()
+            except Exception:  # noqa: BLE001 - cleanup must not replace the cycle outcome
+                # _collect_with_client may already have published a coherent
+                # snapshot, or it may be propagating the real collection
+                # failure. A transport cleanup error must do neither of these:
+                # turn a successful published cycle into a reported failure,
+                # nor mask the original exception with a less useful one.
+                logger.warning("collector: failed to close Docker client", exc_info=True)
 
     def _collect_with_client(self, client: docker.DockerClient) -> CollectorSnapshot:
         warnings: list[str] = []

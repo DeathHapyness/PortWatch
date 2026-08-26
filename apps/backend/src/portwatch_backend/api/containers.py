@@ -34,7 +34,7 @@ async def list_containers(
     label: str | None = None,
     q: str | None = None,
 ) -> list[ContainerDetail]:
-    containers: tuple[ContainerDetail, ...] = request.app.state.snapshot_store.read().containers
+    containers: tuple[ContainerDetail, ...] = request.app.state.snapshot_store.read_containers()
 
     if status_filter is not None:
         containers = tuple(c for c in containers if c.status == status_filter)
@@ -53,7 +53,7 @@ async def list_containers(
 
 @router.get("/{container_id}", summary="Container detail")
 async def get_container(request: Request, container_id: str) -> ContainerDetail:
-    containers: tuple[ContainerDetail, ...] = request.app.state.snapshot_store.read().containers
+    containers: tuple[ContainerDetail, ...] = request.app.state.snapshot_store.read_containers()
     for container in containers:
         if container_id in (container.id, container.name):
             return container

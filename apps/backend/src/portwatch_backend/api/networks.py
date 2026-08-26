@@ -20,13 +20,13 @@ def _to_detail(summary: NetworkSummary) -> NetworkDetail:
 
 @router.get("", summary="List Docker networks")
 async def list_networks(request: Request) -> list[NetworkDetail]:
-    networks = request.app.state.snapshot_store.read().networks
+    networks = request.app.state.snapshot_store.read_networks()
     return [_to_detail(n) for n in networks]
 
 
 @router.get("/{network_id}", summary="Network detail")
 async def get_network(request: Request, network_id: str) -> NetworkDetail:
-    networks = request.app.state.snapshot_store.read().networks
+    networks = request.app.state.snapshot_store.read_networks()
     for network in networks:
         if network_id in (network.id, network.name):
             return _to_detail(network)

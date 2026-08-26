@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from portwatch_backend.collector.state import CollectorSnapshot, SnapshotStore
+from portwatch_backend.collector.state import CollectorSnapshot, SnapshotOverview, SnapshotStore
 from portwatch_backend.core.schemas import (
     ContainerDetail,
     ContainerStatus,
@@ -328,6 +328,113 @@ def test_concurrent_find_container_stays_consistent_with_concurrent_publish() ->
         finders = [executor.submit(find_repeatedly) for _ in range(4)]
         for future in [*publishers, *finders]:
             future.result()
+
+
+# --- SnapshotOverview / read_overview --------------------------------------
+
+
+def test_read_overview_before_any_publish() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+
+    overview = store.read_overview()
+
+    assert overview.generation == 0
+    assert overview.containers_running == 0
+    assert overview.containers_total == 0
+    assert overview.networks_total == 0
+    assert overview.ports_used_total == 0
+    assert overview.host_ports_enabled is False
+    assert overview.docker_version is None
+
+
+def test_read_overview_reflects_a_published_snapshot() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    running = make_container("web")
+    stopped = ContainerDetail(
+        id="old",
+        name="old",
+        image="redis:7",
+        status=ContainerStatus.exited,
+        created_at=NOW,
+    )
+
+    store.publish(
+        containers=[running, stopped],
+        networks=[make_network("dev-net")],
+        ports=[make_port(8080, "web"), make_port(22, None)],
+        docker_version="29.0.0",
+        docker_api_version="1.51",
+        host_ports_enabled=True,
+    )
+    overview = store.read_overview()
+
+    assert overview.generation == 1
+    assert overview.containers_running == 1
+    assert overview.containers_total == 2
+    assert overview.networks_total == 1
+    assert overview.ports_used_total == 2
+    assert overview.host_ports_enabled is True
+    assert overview.docker_version == "29.0.0"
+    assert overview.docker_api_version == "1.51"
+
+
+def test_read_overview_reflects_the_latest_generation() -> None:
+    store = SnapshotStore(clock=lambda: NOW)
+    store.publish(containers=[make_container("first")])
+    store.publish(containers=[make_container("second"), make_container("third")])
+
+    overview = store.read_overview()
+
+    assert overview.generation == 2
+    assert overview.containers_total == 2
+
+
+def test_snapshot_overview_is_stale_matches_collector_snapshot_semantics() -> None:
+    overview = SnapshotOverview(
+        generation=1,
+        collected_at=NOW,
+        docker_version=None,
+        docker_api_version=None,
+        containers_running=0,
+        containers_total=0,
+        networks_total=0,
+        ports_used_total=0,
+        host_ports_enabled=False,
+    )
+
+    assert overview.is_stale(now=NOW + timedelta(seconds=31), max_age=timedelta(seconds=30))
+    assert not overview.is_stale(now=NOW + timedelta(seconds=30), max_age=timedelta(seconds=30))
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"generation": -1}, "generation must be non-negative"),
+        ({"collected_at": NOW.replace(tzinfo=None)}, "collected_at must be timezone-aware"),
+        (
+            {"containers_running": 2, "containers_total": 1},
+            "containers_running must be between zero and containers_total",
+        ),
+        ({"networks_total": -1}, "resource totals must be non-negative"),
+        ({"ports_used_total": -1}, "resource totals must be non-negative"),
+    ],
+)
+def test_snapshot_overview_rejects_invalid_values(kwargs: dict, message: str) -> None:
+    base = {
+        "generation": 0,
+        "collected_at": NOW,
+        "docker_version": None,
+        "docker_api_version": None,
+        "containers_running": 0,
+        "containers_total": 0,
+        "networks_total": 0,
+        "ports_used_total": 0,
+        "host_ports_enabled": False,
+    }
+    base.update(kwargs)
+
+    with pytest.raises(ValueError, match=message):
+        SnapshotOverview(**base)
 
 
 def test_concurrent_readers_never_observe_a_mixed_generation() -> None:

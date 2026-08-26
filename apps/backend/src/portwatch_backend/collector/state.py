@@ -12,7 +12,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import Lock
 
-from portwatch_backend.core.schemas import ContainerDetail, NetworkSummary, PortEntry
+from portwatch_backend.core.schemas import (
+    ContainerDetail,
+    ContainerStatus,
+    NetworkSummary,
+    PortEntry,
+)
 
 Clock = Callable[[], datetime]
 SnapshotPublishedCallback = Callable[[int, datetime], None]
@@ -27,6 +32,13 @@ def _utc_now() -> datetime:
 def _require_aware(value: datetime, *, field_name: str) -> None:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError(f"{field_name} must be timezone-aware")
+
+
+def _is_stale(*, collected_at: datetime, now: datetime, max_age: timedelta) -> bool:
+    _require_aware(now, field_name="now")
+    if max_age < timedelta(0):
+        raise ValueError("max_age must be non-negative")
+    return now - collected_at > max_age
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,10 +68,34 @@ class CollectorSnapshot:
     def is_stale(self, *, now: datetime, max_age: timedelta) -> bool:
         """Return whether this generation is older than the accepted age."""
 
-        _require_aware(now, field_name="now")
-        if max_age < timedelta(0):
-            raise ValueError("max_age must be non-negative")
-        return now - self.collected_at > max_age
+        return _is_stale(collected_at=self.collected_at, now=now, max_age=max_age)
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotOverview:
+    """Immutable scalar view for frequently polled status endpoints."""
+
+    generation: int
+    collected_at: datetime
+    docker_version: str | None
+    docker_api_version: str | None
+    containers_running: int
+    containers_total: int
+    networks_total: int
+    ports_used_total: int
+    host_ports_enabled: bool
+
+    def __post_init__(self) -> None:
+        if self.generation < 0:
+            raise ValueError("generation must be non-negative")
+        _require_aware(self.collected_at, field_name="collected_at")
+        if not 0 <= self.containers_running <= self.containers_total:
+            raise ValueError("containers_running must be between zero and containers_total")
+        if self.networks_total < 0 or self.ports_used_total < 0:
+            raise ValueError("resource totals must be non-negative")
+
+    def is_stale(self, *, now: datetime, max_age: timedelta) -> bool:
+        return _is_stale(collected_at=self.collected_at, now=now, max_age=max_age)
 
 
 def _clone_snapshot(snapshot: CollectorSnapshot) -> CollectorSnapshot:
@@ -95,6 +131,17 @@ class SnapshotStore:
         self._snapshot = CollectorSnapshot(generation=0, collected_at=initial_time)
         self._containers_by_identifier: dict[str, ContainerDetail] = {}
         self._networks_by_identifier: dict[str, NetworkSummary] = {}
+        self._overview = SnapshotOverview(
+            generation=0,
+            collected_at=initial_time,
+            docker_version=None,
+            docker_api_version=None,
+            containers_running=0,
+            containers_total=0,
+            networks_total=0,
+            ports_used_total=0,
+            host_ports_enabled=False,
+        )
 
     def read(self) -> CollectorSnapshot:
         """Return an isolated copy of one complete generation."""
@@ -138,6 +185,12 @@ class SnapshotStore:
             ports = self._snapshot.ports
         return tuple(item.model_copy(deep=True) for item in ports)
 
+    def read_overview(self) -> SnapshotOverview:
+        """Return an O(1) coherent view without cloning resource models."""
+
+        with self._lock:
+            return self._overview
+
     def publish(
         self,
         *,
@@ -172,6 +225,9 @@ class SnapshotStore:
         for network in detached_networks:
             networks_by_identifier.setdefault(network.id, network)
             networks_by_identifier.setdefault(network.name, network)
+        containers_running = sum(
+            1 for container in detached_containers if container.status == ContainerStatus.running
+        )
 
         with self._lock:
             snapshot = CollectorSnapshot(
@@ -188,6 +244,17 @@ class SnapshotStore:
             self._snapshot = snapshot
             self._containers_by_identifier = containers_by_identifier
             self._networks_by_identifier = networks_by_identifier
+            self._overview = SnapshotOverview(
+                generation=snapshot.generation,
+                collected_at=timestamp,
+                docker_version=docker_version,
+                docker_api_version=docker_api_version,
+                containers_running=containers_running,
+                containers_total=len(detached_containers),
+                networks_total=len(detached_networks),
+                ports_used_total=len(detached_ports),
+                host_ports_enabled=host_ports_enabled,
+            )
 
         if self._on_publish is not None:
             try:

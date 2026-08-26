@@ -53,8 +53,7 @@ async def list_containers(
 
 @router.get("/{container_id}", summary="Container detail")
 async def get_container(request: Request, container_id: str) -> ContainerDetail:
-    containers: tuple[ContainerDetail, ...] = request.app.state.snapshot_store.read().containers
-    for container in containers:
-        if container_id in (container.id, container.name):
-            return container
+    container = request.app.state.snapshot_store.find_container(container_id)
+    if container is not None:
+        return container
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="container not found")

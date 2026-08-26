@@ -93,6 +93,8 @@ class SnapshotStore:
         initial_time = clock()
         _require_aware(initial_time, field_name="clock result")
         self._snapshot = CollectorSnapshot(generation=0, collected_at=initial_time)
+        self._containers_by_identifier: dict[str, ContainerDetail] = {}
+        self._networks_by_identifier: dict[str, NetworkSummary] = {}
 
     def read(self) -> CollectorSnapshot:
         """Return an isolated copy of one complete generation."""
@@ -100,6 +102,20 @@ class SnapshotStore:
         with self._lock:
             current = self._snapshot
         return _clone_snapshot(current)
+
+    def find_container(self, identifier: str) -> ContainerDetail | None:
+        """Return one isolated container without cloning the full snapshot."""
+
+        with self._lock:
+            container = self._containers_by_identifier.get(identifier)
+        return container.model_copy(deep=True) if container is not None else None
+
+    def find_network(self, identifier: str) -> NetworkSummary | None:
+        """Return one isolated network without cloning the full snapshot."""
+
+        with self._lock:
+            network = self._networks_by_identifier.get(identifier)
+        return network.model_copy(deep=True) if network is not None else None
 
     def publish(
         self,
@@ -125,6 +141,16 @@ class SnapshotStore:
         detached_networks = tuple(item.model_copy(deep=True) for item in networks)
         detached_ports = tuple(item.model_copy(deep=True) for item in ports)
         detached_warnings = tuple(warnings)
+        containers_by_identifier: dict[str, ContainerDetail] = {}
+        for container in detached_containers:
+            # Preserve the list endpoint's existing first-match behavior if a
+            # name happens to collide with another container's ID.
+            containers_by_identifier.setdefault(container.id, container)
+            containers_by_identifier.setdefault(container.name, container)
+        networks_by_identifier: dict[str, NetworkSummary] = {}
+        for network in detached_networks:
+            networks_by_identifier.setdefault(network.id, network)
+            networks_by_identifier.setdefault(network.name, network)
 
         with self._lock:
             snapshot = CollectorSnapshot(
@@ -139,6 +165,8 @@ class SnapshotStore:
                 warnings=detached_warnings,
             )
             self._snapshot = snapshot
+            self._containers_by_identifier = containers_by_identifier
+            self._networks_by_identifier = networks_by_identifier
 
         if self._on_publish is not None:
             try:

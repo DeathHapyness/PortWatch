@@ -41,6 +41,52 @@ def test_poll_interval_rejects_non_finite_or_non_positive_values(interval: float
         Settings(collector_poll_interval_seconds=interval)
 
 
+# --- collector_cycle_budget_seconds / collector_max_containers/networks ---
+# (ADR-0007 — collection budget and backpressure)
+
+
+def test_collector_cycle_budget_defaults_to_25_seconds() -> None:
+    assert Settings().collector_cycle_budget_seconds == 25.0
+
+
+def test_collector_cycle_budget_accepts_a_normal_positive_value() -> None:
+    assert Settings(collector_cycle_budget_seconds=5.0).collector_cycle_budget_seconds == 5.0
+
+
+@pytest.mark.parametrize("budget", [0, -1.0, float("inf"), float("nan")])
+def test_collector_cycle_budget_rejects_non_finite_or_non_positive_values(budget: float) -> None:
+    with pytest.raises(ValueError, match="greater than zero"):
+        Settings(collector_cycle_budget_seconds=budget)
+
+
+def test_collector_max_containers_and_networks_default_to_1000() -> None:
+    settings = Settings()
+    assert settings.collector_max_containers == 1_000
+    assert settings.collector_max_networks == 1_000
+
+
+@pytest.mark.parametrize("limit", [1, 100_000])
+def test_collector_max_containers_accepts_its_boundary_values(limit: int) -> None:
+    assert Settings(collector_max_containers=limit).collector_max_containers == limit
+
+
+@pytest.mark.parametrize("limit", [0, -1, 100_001])
+def test_collector_max_containers_rejects_out_of_range_values(limit: int) -> None:
+    with pytest.raises(ValueError, match="between 1 and 100000"):
+        Settings(collector_max_containers=limit)
+
+
+@pytest.mark.parametrize("limit", [1, 100_000])
+def test_collector_max_networks_accepts_its_boundary_values(limit: int) -> None:
+    assert Settings(collector_max_networks=limit).collector_max_networks == limit
+
+
+@pytest.mark.parametrize("limit", [0, -1, 100_001])
+def test_collector_max_networks_rejects_out_of_range_values(limit: int) -> None:
+    with pytest.raises(ValueError, match="between 1 and 100000"):
+        Settings(collector_max_networks=limit)
+
+
 # --- websocket_max_subscribers --------------------------------------------
 
 

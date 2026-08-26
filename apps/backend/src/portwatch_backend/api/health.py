@@ -30,9 +30,9 @@ async def health() -> dict[str, str]:
 
 @router.get("/health/ready", summary="Readiness probe")
 async def health_ready(request: Request, response: Response) -> dict[str, object]:
-    snapshot = request.app.state.snapshot_store.read()
+    overview = request.app.state.snapshot_store.read_overview()
 
-    if snapshot.generation == 0:
+    if overview.generation == 0:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {
             "status": "not_ready",
@@ -41,18 +41,18 @@ async def health_ready(request: Request, response: Response) -> dict[str, object
 
     settings = request.app.state.settings
     max_age = timedelta(seconds=settings.collector_poll_interval_seconds * _STALE_CYCLE_TOLERANCE)
-    if snapshot.is_stale(now=datetime.now(UTC), max_age=max_age):
+    if overview.is_stale(now=datetime.now(UTC), max_age=max_age):
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {
             "status": "not_ready",
             "reason": "collector snapshot is stale — docker-socket-proxy may be unreachable",
-            "generation": snapshot.generation,
-            "collected_at": snapshot.collected_at.isoformat(),
+            "generation": overview.generation,
+            "collected_at": overview.collected_at.isoformat(),
         }
 
     return {
         "status": "ok",
-        "generation": snapshot.generation,
-        "collected_at": snapshot.collected_at.isoformat(),
-        "host_ports_enabled": snapshot.host_ports_enabled,
+        "generation": overview.generation,
+        "collected_at": overview.collected_at.isoformat(),
+        "host_ports_enabled": overview.host_ports_enabled,
     }

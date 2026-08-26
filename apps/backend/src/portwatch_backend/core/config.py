@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     # Collector tuning
     collector_poll_interval_seconds: float = 30.0
+    collector_cycle_budget_seconds: float = 25.0
+    collector_max_containers: int = 1_000
+    collector_max_networks: int = 1_000
 
     # Bound the per-process fan-out resources used by /api/v1/events. Each
     # subscriber owns an asyncio queue and two tasks while connected.
@@ -65,12 +68,19 @@ class Settings(BaseSettings):
             )
         return origins
 
-    @field_validator("collector_poll_interval_seconds")
+    @field_validator("collector_poll_interval_seconds", "collector_cycle_budget_seconds")
     @classmethod
-    def _validate_poll_interval(cls, interval: float) -> float:
-        if not math.isfinite(interval) or interval <= 0:
-            raise ValueError("collector_poll_interval_seconds must be finite and greater than zero")
-        return interval
+    def _validate_collector_duration(cls, duration: float, info: ValidationInfo) -> float:
+        if not math.isfinite(duration) or duration <= 0:
+            raise ValueError(f"{info.field_name} must be finite and greater than zero")
+        return duration
+
+    @field_validator("collector_max_containers", "collector_max_networks")
+    @classmethod
+    def _validate_collector_resource_limit(cls, limit: int, info: ValidationInfo) -> int:
+        if not 1 <= limit <= 100_000:
+            raise ValueError(f"{info.field_name} must be between 1 and 100000")
+        return limit
 
     @field_validator("websocket_max_subscribers")
     @classmethod

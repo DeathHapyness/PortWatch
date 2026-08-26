@@ -45,7 +45,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level)
-    event_broadcaster = SnapshotBroadcaster()
+    event_broadcaster = SnapshotBroadcaster(
+        max_subscribers=settings.websocket_max_subscribers,
+    )
     snapshot_store = SnapshotStore(on_publish=event_broadcaster.publish)
     metrics = PortWatchMetrics()
     collector = Collector(settings, snapshot_store, metrics=metrics)

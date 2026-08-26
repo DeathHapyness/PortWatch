@@ -22,6 +22,10 @@ class BroadcasterClosedError(RuntimeError):
     """Raised when a subscription starts after shutdown has begun."""
 
 
+class SubscriberLimitError(RuntimeError):
+    """Raised when the configured concurrent subscriber limit is reached."""
+
+
 @dataclass(frozen=True, slots=True)
 class _Subscriber:
     loop: asyncio.AbstractEventLoop
@@ -37,9 +41,12 @@ def _offer_latest(queue: asyncio.Queue[BroadcastItem], message: BroadcastItem) -
 class SnapshotBroadcaster:
     """Fan one snapshot-generation notification out to every subscriber."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_subscribers: int = 128) -> None:
+        if max_subscribers < 1:
+            raise ValueError("max_subscribers must be at least 1")
         self._lock = Lock()
         self._subscribers: set[_Subscriber] = set()
+        self._max_subscribers = max_subscribers
         self._last_generation = 0
         self._closed = False
 
@@ -57,6 +64,8 @@ class SnapshotBroadcaster:
         with self._lock:
             if self._closed:
                 raise BroadcasterClosedError("snapshot broadcaster is closed")
+            if len(self._subscribers) >= self._max_subscribers:
+                raise SubscriberLimitError("snapshot subscriber limit reached")
             self._subscribers.add(subscriber)
         try:
             yield subscriber.queue

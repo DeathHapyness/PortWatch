@@ -28,6 +28,7 @@ from portwatch_backend.core.logging import configure_logging
 from portwatch_backend.core.metrics import PortWatchMetrics, build_http_metrics_middleware
 from portwatch_backend.core.middleware import request_id_middleware
 from portwatch_backend.core.schemas import ProblemDetail
+from portwatch_backend.core.security_headers import security_headers_middleware
 
 
 @asynccontextmanager
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     app.middleware("http")(request_id_middleware)
     app.middleware("http")(build_http_metrics_middleware(metrics))
     app.middleware("http")(sensitive_response_cache_control_middleware)
+    app.middleware("http")(security_headers_middleware)
 
     @app.exception_handler(HTTPException)
     async def problem_detail_handler(request: Request, exc: HTTPException) -> JSONResponse:

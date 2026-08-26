@@ -41,6 +41,24 @@ def test_poll_interval_rejects_non_finite_or_non_positive_values(interval: float
         Settings(collector_poll_interval_seconds=interval)
 
 
+# --- websocket_max_subscribers --------------------------------------------
+
+
+def test_websocket_max_subscribers_defaults_to_128() -> None:
+    assert Settings().websocket_max_subscribers == 128
+
+
+@pytest.mark.parametrize("limit", [1, 10_000])
+def test_websocket_max_subscribers_accepts_its_boundary_values(limit: int) -> None:
+    assert Settings(websocket_max_subscribers=limit).websocket_max_subscribers == limit
+
+
+@pytest.mark.parametrize("limit", [0, -1, 10_001])
+def test_websocket_max_subscribers_rejects_out_of_range_values(limit: int) -> None:
+    with pytest.raises(ValueError, match="between 1 and 10000"):
+        Settings(websocket_max_subscribers=limit)
+
+
 # --- port_range_start / port_range_end -----------------------------------
 
 

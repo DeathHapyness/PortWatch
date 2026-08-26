@@ -21,6 +21,7 @@ from portwatch_backend.api import containers, events, health, networks, ports, s
 from portwatch_backend.collector.service import Collector
 from portwatch_backend.collector.state import SnapshotStore
 from portwatch_backend.core.auth import require_api_token
+from portwatch_backend.core.cache_control import sensitive_response_cache_control_middleware
 from portwatch_backend.core.config import get_settings
 from portwatch_backend.core.events import SnapshotBroadcaster
 from portwatch_backend.core.logging import configure_logging
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     )
     app.middleware("http")(request_id_middleware)
     app.middleware("http")(build_http_metrics_middleware(metrics))
+    app.middleware("http")(sensitive_response_cache_control_middleware)
 
     @app.exception_handler(HTTPException)
     async def problem_detail_handler(request: Request, exc: HTTPException) -> JSONResponse:

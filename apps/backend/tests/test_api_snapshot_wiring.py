@@ -209,6 +209,18 @@ async def test_list_networks_reflects_the_real_snapshot(
     assert body[0]["containers"] == ["portwatch-dev-fixture-web"]
 
 
+async def test_get_network_by_id_or_name(
+    client: httpx.AsyncClient, snapshot_store: SnapshotStore
+) -> None:
+    _seed(snapshot_store)
+
+    by_id = await client.get("/api/v1/networks/net-0001")
+    by_name = await client.get("/api/v1/networks/portwatch-dev-net")
+
+    assert by_id.status_code == by_name.status_code == 200
+    assert by_id.json()["name"] == by_name.json()["name"] == "portwatch-dev-net"
+
+
 async def test_get_network_not_found_is_problem_json(
     client: httpx.AsyncClient, snapshot_store: SnapshotStore
 ) -> None:

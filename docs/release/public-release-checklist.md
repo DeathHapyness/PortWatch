@@ -45,9 +45,18 @@ Nenhuma versão deve ser anunciada como pronta para usuários enquanto os itens
       (verificado manualmente 2026-08-26 — build+run real da imagem +
       `curl` — e automatizado desde 2026-08-27 no job `prod-images` do CI,
       que falha se o header voltar a aparecer).
-- [ ] Scan de dependências, secrets e imagens sem achado bloqueador.
-- [ ] Branch protection e revisão obrigatória habilitadas.
-- [ ] Private Vulnerability Reporting e alertas do Dependabot habilitados.
+- [ ] Scan de dependências, secrets e imagens sem achado bloqueador. (varredura
+      manual do histórico completo do git por segredos reais feita em
+      2026-08-27, antes do repositório ir público — nenhum achado; ainda
+      falta um scan automatizado de dependências/imagens rodando em CI)
+- [ ] Branch protection e revisão obrigatória habilitadas. (decisão adiada
+      pelo QA em 2026-08-27 — mudaria o fluxo atual de merge direto do Lead;
+      revisitar quando fizer sentido)
+- [x] Private Vulnerability Reporting e alertas do Dependabot habilitados —
+      confirmado via API em 2026-08-27
+      (`vulnerability-alerts` e `private-vulnerability-reporting` ambos
+      `enabled`). Repositório tornado público no mesmo dia (histórico
+      completo varrido por segredos antes disso, ver item acima).
 
 ## Artefatos da versão
 

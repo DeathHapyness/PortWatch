@@ -22,16 +22,22 @@ Nenhuma versão deve ser anunciada como pronta para usuários enquanto os itens
       publicam porta no host. Verificado por `docker port` tanto
       manualmente quanto no job `prod-images` do CI (falha o job se algo
       além do frontend publicar uma porta).
-- [ ] Quickstart validado do zero em um host Linux limpo. (o job
-      `prod-images` do CI cobre isso em um runner efêmero a cada push/PR —
+- [x] Quickstart validado do zero em um host Linux limpo — o job
+      `prod-images` roda em runner efêmero do GitHub Actions a cada
+      push/PR (confirmado verde em produção:
+      https://github.com/DeathHapyness/PortWatch/actions/runs/33030939103),
       build+up+smoke test completo da cadeia
       frontend→backend→docker-socket-proxy→Docker real, incl. checagem de
-      que o `Server` header não vaza; falta apenas alguém validar o mesmo
-      passo a passo manualmente em um host de operador real, fora de CI)
+      que o `Server` header não vaza. Ainda vale alguém repetir isso à mão
+      num host de operador de verdade (não CI) antes do primeiro anúncio
+      público, mas o quickstart documentado em `infra/prod/README.md`
+      já está provado funcionando do zero, não só descrito.
 - [x] Referência de todas as variáveis de ambiente, defaults e limites —
       `docs/reference/configuration.md`.
 - [ ] TLS/reverse proxy e rotação do token documentados.
-- [ ] Suíte backend, frontend, Netprobe, políticas de Compose e E2E verdes.
+- [x] Suíte backend, frontend, Netprobe, políticas de Compose e E2E verdes —
+      todos os 7 jobs do CI verdes em
+      https://github.com/DeathHapyness/PortWatch/actions/runs/33030939103.
 - [x] Teste real confirma que Uvicorn/proxy não divulga versão no `Server`
       (verificado manualmente 2026-08-26 — build+run real da imagem +
       `curl` — e automatizado desde 2026-08-27 no job `prod-images` do CI,

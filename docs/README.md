@@ -11,6 +11,8 @@
   — critérios verificáveis para publicar uma versão utilizável.
 - [`audits/`](./audits/) — auditorias históricas; um achado antigo pode já ter
   sido corrigido e deve ser conferido contra o código atual.
+- [`../infra/prod/`](../infra/prod/) — Compose de produção (backend +
+  frontend + docker-socket-proxy, non-root, `read_only`, sem TLS embutido).
 
 As regras permanentes para desenvolvimento e agentes continuam em
 [`../CLAUDE.md`](../CLAUDE.md).

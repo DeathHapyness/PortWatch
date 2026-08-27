@@ -1,9 +1,13 @@
 # Guia de implantação segura
 
-Este guia define os mínimos de segurança para operadores. Ele não é ainda um
-guia de instalação: enquanto não houver imagens e Compose de produção
-versionados, use o repositório apenas como ambiente de desenvolvimento ou para
-avaliação controlada.
+Este guia define os mínimos de segurança para operadores. Imagens e Compose
+de produção já existem (`apps/backend/Dockerfile`, `apps/web/Dockerfile`,
+`infra/prod/docker-compose.prod.yml`), mas vários dos itens abaixo (scan de
+dependências/imagens, branch protection, quickstart validado do zero) ainda
+não estão fechados — ver
+[`../release/public-release-checklist.md`](../release/public-release-checklist.md)
+para o estado real antes de tratar isto como pronto para exposição fora de
+loopback.
 
 ## Requisitos do host
 
@@ -22,7 +26,11 @@ avaliação controlada.
 - API e dashboard devem ficar em loopback por padrão.
 
 Não copie `infra/dev/docker-compose.dev.yml` para produção: ele contém fixture,
-nomes e guard voltados exclusivamente ao sandbox de desenvolvimento.
+nomes e guard voltados exclusivamente ao sandbox de desenvolvimento. Use
+`infra/prod/docker-compose.prod.yml` (ver `infra/prod/README.md`) — ele já
+aplica non-root, `read_only`, `cap_drop: ALL` e limites de CPU/memória/PIDs
+nos três serviços, e não publica o socket proxy nem o backend fora da rede
+interna do compose.
 
 ## Exposição na rede
 

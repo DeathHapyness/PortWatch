@@ -1,0 +1,171 @@
+# Compose de produção do PortWatch — NÃO é o sandbox de desenvolvimento
+# (infra/dev/docker-compose.dev.yml) e não deve ser confundido com ele: sem
+# fixture, sem guard de sandbox, sem exposição em portas de loopback do host
+# de dev.
+#
+# Topologia: backend e frontend em containers, comunicando com o socket
+# Docker real exclusivamente através do docker-socket-proxy (GET-only, sem
+# publicar porta no host — só alcançável pela rede interna deste compose).
+# Nenhum serviço aqui monta /var/run/docker.sock além do proxy.
+#
+# Netprobe (portas ocupadas do host) FICA DE FORA deste compose de propósito
+# — não é uma omissão. Netprobe só aceita bind em loopback (127.0.0.0/8 ou
+# ::1, ver infra/netprobe/netprobe.py) e `network_mode: host` é exclusivo
+# dele (CLAUDE.md) — nenhum outro serviço, incluindo o backend, pode
+# compartilhar a rede do host para alcançá-lo. Um backend containerizado
+# nesta topologia nunca enxerga um Netprobe em loopback do host: são
+# namespaces de rede diferentes por construção, não uma limitação a
+# contornar. Se a visibilidade de portas do host for necessária, rode o
+# backend nativamente ao lado do Netprobe (mesmo padrão do sandbox de dev,
+# ver docs/README.md) em vez de usar este compose; caso contrário
+# PORTWATCH_NETPROBE_URL fica ausente aqui de propósito e
+# `host_ports_enabled` aparece `false` na API — comportamento já suportado,
+# não um erro.
+#
+# TLS não está incluído. O frontend expõe HTTP simples em 8080; termine TLS
+# em um reverse proxy mantido por você na frente deste compose (ver
+# docs/security/operator-guide.md, seção "Exposição na rede"). Não publique
+# a porta do frontend diretamente na LAN/Internet sem essa camada.
+#
+# Segredos: PORTWATCH_API_TOKEN vem de variável de ambiente do shell/CI ou de
+# um arquivo .env não versionado ao lado deste arquivo — nunca hardcoded
+# aqui. Ver docs/reference/configuration.md para todas as variáveis restantes
+# e docs/security/operator-guide.md para os requisitos completos antes de
+# expor isto fora de loopback.
+
+services:
+  docker-socket-proxy:
+    image: "tecnativa/docker-socket-proxy:v0.5.0@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459"
+    restart: unless-stopped
+    environment:
+      # Mesmo allowlist do sandbox de dev — GET-only, mínimo necessário para
+      # o Collector (containers, redes, version). Ver
+      # infra/dev/docker-compose.dev.yml para o comentário completo seção
+      # por seção; mantido idêntico aqui de propósito.
+      CONTAINERS: "1"
+      NETWORKS: "1"
+      VERSION: "1"
+      POST: "0"
+      AUTH: "0"
+      SECRETS: "0"
+      EXEC: "0"
+      IMAGES: "0"
+      INFO: "0"
+      EVENTS: "0"
+      PING: "0"
+      BUILD: "0"
+      COMMIT: "0"
+      VOLUMES: "0"
+      SYSTEM: "0"
+      TASKS: "0"
+      SERVICES: "0"
+      SWARM: "0"
+      NODES: "0"
+      PLUGINS: "0"
+      SESSION: "0"
+      CONFIGS: "0"
+      DISTRIBUTION: "0"
+      GRPC: "0"
+      ALLOW_START: "0"
+      ALLOW_STOP: "0"
+      ALLOW_RESTARTS: "0"
+      ALLOW_PAUSE: "0"
+      ALLOW_UNPAUSE: "0"
+    volumes:
+      # Único mount do socket Docker real em todo este compose, e só leitura.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # Sem `ports:` — alcançável apenas pela rede interna, pelo backend.
+    networks:
+      - portwatch-internal
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+      - /var/lib/haproxy
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 32
+    # A imagem termina seu próprio Dockerfile com `USER root` (precisa
+    # escrever a config renderizada e ler o socket montado) — não
+    # sobrescrevemos `user:` aqui; o resto do hardening acima se aplica.
+
+  backend:
+    build:
+      context: ../../apps/backend
+    image: portwatch-backend:local
+    restart: unless-stopped
+    environment:
+      PORTWATCH_BIND_HOST: "0.0.0.0"
+      PORTWATCH_API_TOKEN: "${PORTWATCH_API_TOKEN:?defina um token longo e aleatório antes de subir em produção}"
+      PORTWATCH_DOCKER_PROXY_URL: "http://docker-socket-proxy:2375"
+      # Lista JSON (não string simples) — mesmo formato aceito diretamente
+      # pelo Settings do backend, ver docs/reference/configuration.md.
+      PORTWATCH_CORS_ALLOW_ORIGINS: "${PORTWATCH_CORS_ALLOW_ORIGINS:?defina a lista JSON com a origem exata do dashboard, ex: [\"https://portwatch.exemplo.com\"]}"
+      # PORTWATCH_NETPROBE_URL fica ausente de propósito — ver comentário no
+      # topo deste arquivo sobre a incompatibilidade com esta topologia.
+    # Sem `ports:` publicado no host — só o frontend fica exposto; o
+    # reverse proxy do operador fala com o frontend, e o frontend fala com
+    # o backend pela rede interna (ver apps/web/nginx/default.conf.template).
+    depends_on:
+      - docker-socket-proxy
+    networks:
+      - portwatch-internal
+    read_only: true
+    tmpfs:
+      - /tmp:uid=10001,gid=10001
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()"]
+      interval: 30s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
+
+  frontend:
+    build:
+      context: ../../apps/web
+    image: portwatch-frontend:local
+    restart: unless-stopped
+    environment:
+      PORTWATCH_BACKEND_URL: "http://backend:8000"
+    ports:
+      # Único serviço deste compose publicado — ainda assim, sem TLS. Coloque
+      # um reverse proxy mantido na frente antes de expor fora de loopback
+      # (ver comentário no topo deste arquivo).
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - backend
+    networks:
+      - portwatch-internal
+    read_only: true
+    tmpfs:
+      # uid/gid=101 é o usuário `nginx` da imagem nginxinc/nginx-unprivileged
+      # (ver apps/web/Dockerfile) — sem isso, os diretórios tmpfs nascem
+      # root:root e o processo não-root não consegue escrever neles
+      # (verificado manualmente: envsubst falha silenciosamente sem o
+      # uid/gid certo).
+      - /tmp:uid=101,gid=101
+      - /var/cache/nginx:uid=101,gid=101
+      - /var/run:uid=101,gid=101
+      - /etc/nginx/conf.d:uid=101,gid=101
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 64m
+    cpus: 0.5
+    pids_limit: 64
+
+networks:
+  portwatch-internal:
+    name: portwatch-prod-internal

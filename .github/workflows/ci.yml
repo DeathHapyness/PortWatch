@@ -222,13 +222,19 @@ jobs:
           fi
           curl -fsS http://127.0.0.1:8080/api/v1/system/summary \
             -H "Authorization: Bearer ${token}" | grep -q portwatch_status
-      - name: Default CORS origin (127.0.0.1:8080) is accepted with no override
+      - name: Default CORS origins (127.0.0.1:8080 and localhost:8080) are both accepted with no override
+        # Browsers treat "localhost" and "127.0.0.1" as different origins for
+        # CORS even though they resolve to the same place — both need to be
+        # in the default or opening the dashboard at the other one silently
+        # fails on every API call.
         run: |
           set -e
-          origin=$(curl -s -o /dev/null -D - -X OPTIONS http://127.0.0.1:8080/api/v1/system/summary \
-            -H "Origin: http://127.0.0.1:8080" \
-            -H "Access-Control-Request-Method: GET" | grep -i '^access-control-allow-origin:')
-          echo "$origin" | grep -q 'http://127.0.0.1:8080'
+          for host in 127.0.0.1 localhost; do
+            origin=$(curl -s -o /dev/null -D - -X OPTIONS http://127.0.0.1:8080/api/v1/system/summary \
+              -H "Origin: http://${host}:8080" \
+              -H "Access-Control-Request-Method: GET" | grep -i '^access-control-allow-origin:')
+            echo "$origin" | grep -q "http://${host}:8080"
+          done
       - name: Teardown
         if: always()
         run: docker compose -f docker-compose.prod.yml down --rmi local

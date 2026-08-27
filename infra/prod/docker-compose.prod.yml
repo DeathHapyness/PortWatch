@@ -116,11 +116,15 @@ services:
       PORTWATCH_API_TOKEN: "${PORTWATCH_API_TOKEN:-}"
       PORTWATCH_DOCKER_PROXY_URL: "http://docker-socket-proxy:2375"
       # Lista JSON (não string simples) — mesmo formato aceito diretamente
-      # pelo Settings do backend, ver docs/reference/configuration.md. O
-      # default abaixo já é a origem correta para a topologia padrão deste
-      # compose (frontend sempre publicado em 127.0.0.1:8080) — só troque
-      # se você também mudar a porta/host publicado do frontend.
-      PORTWATCH_CORS_ALLOW_ORIGINS: '${PORTWATCH_CORS_ALLOW_ORIGINS:-["http://127.0.0.1:8080"]}'
+      # pelo Settings do backend, ver docs/reference/configuration.md. As
+      # duas origens abaixo apontam para a mesma coisa (frontend sempre
+      # publicado em 127.0.0.1:8080) — incluídas as duas porque navegadores
+      # tratam "localhost" e "127.0.0.1" como origens diferentes para CORS,
+      # mesmo resolvendo para o mesmo lugar; sem isso, abrir o dashboard em
+      # http://localhost:8080 (hábito comum) falharia silenciosamente por
+      # CORS. Só troque se você também mudar a porta/host publicado do
+      # frontend.
+      PORTWATCH_CORS_ALLOW_ORIGINS: '${PORTWATCH_CORS_ALLOW_ORIGINS:-["http://127.0.0.1:8080", "http://localhost:8080"]}'
       # PORTWATCH_NETPROBE_URL fica ausente de propósito — ver comentário no
       # topo deste arquivo sobre a incompatibilidade com esta topologia.
     # Sem `ports:` publicado no host — só o frontend fica exposto; o

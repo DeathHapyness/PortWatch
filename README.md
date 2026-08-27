@@ -1,127 +1,134 @@
 # PortWatch
 
-Plataforma de monitoramento de homelab — Docker, containers e portas de rede.
+[![CI](https://github.com/DeathHapyness/PortWatch/actions/workflows/ci.yml/badge.svg)](https://github.com/DeathHapyness/PortWatch/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/DeathHapyness/PortWatch)](LICENSE)
+[![Docker](https://img.shields.io/badge/deploy-docker%20compose-2496ED?logo=docker&logoColor=white)](infra/prod/README.md)
 
-**Status:** funcional e pronto para uso pessoal em loopback hoje. Todos os
-gaps essenciais do roadmap original estão fechados; o projeto está em
-preparação ativa para publicação pública sob licença MIT — o que falta para
-esse próximo passo (não para o uso atual) está rastreado em
+**Painel de monitoramento pro seu homelab: containers, redes e portas —
+tudo em tempo real, sem instalar nada além do Docker.**
+
+Nada de ficar rodando `docker ps` toda hora pra lembrar o que tá de pé, ou
+tentando adivinhar qual porta já tá ocupada antes de subir mais um serviço.
+PortWatch descobre seus containers, redes e portas publicadas sozinho e
+mostra tudo num dashboard que atualiza ao vivo — 100% somente leitura, nunca
+inicia, para ou mexe em nada que você esteja rodando.
+
+```sh
+git clone https://github.com/DeathHapyness/PortWatch.git
+cd PortWatch
+docker compose up -d --build
+docker compose logs backend | grep PORTWATCH_API_TOKEN=
+```
+
+Abre `http://127.0.0.1:8087`, cola o token (ícone de chave no header) e
+pronto — sem configurar nada antes. Deu conflito de porta? Veja
+[`infra/prod/README.md`](infra/prod/README.md).
+
+<p align="center">
+  <img src="docs/assets/screenshot-overview.png" alt="Dashboard de overview do PortWatch mostrando containers, portas e redes em tempo real" width="49%">
+  <img src="docs/assets/screenshot-containers.png" alt="Lista de containers do PortWatch com status, portas e redes de cada um" width="49%">
+</p>
+
+## Por que
+
+Homelab cresce rápido — dez containers viram trinta, três redes viram
+oito, e "essa porta tá livre?" vira uma pergunta que ninguém responde de
+cabeça. PortWatch existe pra isso:
+
+- 🔍 **Descoberta automática** — containers, redes Docker e portas
+  publicadas, sem precisar cadastrar nada manualmente.
+- 🔌 **Portas publicadas dos seus containers** — sabe o que já tá em uso
+  antes de subir o próximo serviço (visibilidade de portas ocupadas do host
+  inteiro, não só as publicadas, é opcional — ver "Status" abaixo).
+- ⚡ **Tempo real** — WebSocket empurra atualização assim que algo muda no
+  Docker; volta pra polling sozinho se a conexão cair.
+- 👀 **Somente leitura, sempre** — nenhum endpoint da API inicia, para,
+  reinicia ou executa comando em qualquer container. PortWatch olha, não
+  mexe.
+- 🔒 **Acesso ao Docker isolado** — a aplicação nunca monta
+  `/var/run/docker.sock` diretamente; fala só com um proxy GET-only
+  dedicado.
+- 🐳 **Um `docker compose up` e pronto** — imagens non-root, hardened,
+  token gerado sozinho na primeira subida.
+
+## Como funciona
+
+```mermaid
+flowchart LR
+    Docker[("Docker Engine\n(seu host)")] -- "somente leitura" --> Proxy["docker-socket-proxy\nGET-only"]
+    Proxy --> Backend["Backend + Collector\n(FastAPI)"]
+    Netprobe["Netprobe\nportas do host"] -.->|"modo nativo, opcional"| Backend
+    Backend -- "REST + WebSocket" --> Frontend["Dashboard\n(React)"]
+    Frontend -- "navegador" --> Voce(("Você"))
+```
+
+O Collector varre containers/redes/portas periodicamente, guarda um
+snapshot atômico em memória (sem banco de dados, sem persistência — o
+estado é sempre derivado ao vivo do Docker) e expõe tudo via API REST +
+WebSocket. O dashboard consome isso e atualiza sozinho.
+
+## Início rápido
+
+```sh
+git clone https://github.com/DeathHapyness/PortWatch.git
+cd PortWatch
+docker compose up -d --build
+```
+
+Sem `PORTWATCH_API_TOKEN` definido, o backend gera um token aleatório na
+primeira subida e imprime nos logs:
+
+```sh
+docker compose logs backend | grep PORTWATCH_API_TOKEN=
+```
+
+Cola esse token no dashboard (`http://127.0.0.1:8087`, ícone de chave no
+header) e é isso — nenhum passo de configuração antes de ver o painel
+funcionando. Detalhes de como acessar de outra máquina, trocar a porta, ou
+o que fica de fora dessa topologia (Netprobe, TLS) em
+[`infra/prod/README.md`](infra/prod/README.md).
+
+## Documentação
+
+| | |
+|---|---|
+| [`docs/README.md`](docs/README.md) | índice de toda a documentação |
+| [`docs/reference/configuration.md`](docs/reference/configuration.md) | toda variável de ambiente, defaults e limites |
+| [`docs/security/threat-model.md`](docs/security/threat-model.md) | ativos, fronteiras de confiança e riscos residuais |
+| [`docs/security/operator-guide.md`](docs/security/operator-guide.md) | requisitos mínimos pra uma implantação segura |
+| [`docs/release/public-release-checklist.md`](docs/release/public-release-checklist.md) | o que falta antes de chamar isto de "pronto pra qualquer um" |
+| [`docs/adr/`](docs/adr/) | decisões de arquitetura, com o porquê de cada uma |
+| Arquitetura completa | https://claude.ai/code/artifact/b41be8c8-2963-4ef8-a4f7-b984b68407a8 |
+
+## Status
+
+Funcional hoje para uso pessoal em homelab — containers, redes, portas
+publicadas e dashboard ao vivo, tudo testado ponta a ponta (local e em CI
+real). Visibilidade de **portas ocupadas do host** (Netprobe) só funciona
+rodando o backend nativamente, não na topologia 100% containerizada — é
+física de rede, não uma limitação arbitrária, ver
+[`infra/prod/README.md`](infra/prod/README.md). O que falta pra um release
+público "sem ressalvas" (scan de imagens em CI, branch protection, TLS
+documentado com receita pronta) está rastreado, item por item, em
 [`docs/release/public-release-checklist.md`](docs/release/public-release-checklist.md).
-Arquitetura completa e roadmap:
-https://claude.ai/code/artifact/b41be8c8-2963-4ef8-a4f7-b984b68407a8.
-Modelo de ameaça, guia de implantação segura e referência de configuração em
-[`docs/README.md`](docs/README.md).
-
-**Backend.** O Collector coleta containers, redes e portas do sandbox via
-`docker-socket-proxy`/`netprobe`, publica snapshots atômicos em memória
-(agora com índice O(1) para lookup por id/nome — `collector/state.py`'s
-`find_container`/`find_network` — e uma visão-resumo pré-computada,
-`SnapshotOverview`, para `/health/ready` e `/api/v1/system/summary`) e
-expõe readiness real. Todas as rotas leem esses snapshots — nenhuma retorna
-dados de exemplo. Nem o Docker nem o netprobe são confiados às cegas: as
-respostas de ambos são validadas por shape antes de virar estado interno
-(`DockerPayloadError`, `collector/netprobe_client.py`), e o cliente do
-netprobe agora usa `httpx.stream` para abortar uma resposta acima de 1 MiB
-durante a transferência, não depois de já ter baixado tudo. Um ciclo do
-Collector tem orçamento de tempo e limites de contagem configuráveis
-(`PORTWATCH_COLLECTOR_CYCLE_BUDGET_SECONDS`/`MAX_CONTAINERS`/`MAX_NETWORKS`
-— ADR-0007); estourar qualquer um falha o ciclo sem publicar um snapshot
-truncado. `core/config.py` valida limites em tudo que vem de variável de
-ambiente, incluindo o limite de assinantes WebSocket simultâneos
-(`PORTWATCH_WEBSOCKET_MAX_SUBSCRIBERS`). Autenticação por token estático
-(ADR-0004) com um `X-Request-Id` client-supplied agora restrito a um token
-ASCII curto antes de entrar em logs/header de resposta; erros no contrato
-RFC 7807 completo; labels/env de containers redigidos por padrão (PW-03).
-Respostas de `/api/v1/*` e `/metrics` levam `Cache-Control: no-store`; todo
-response leva `X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY`.
-Imagem de container de produção hardened em `apps/backend/Dockerfile`
-(non-root, multi-stage, `--no-server-header`; sem `PORTWATCH_API_TOKEN`
-definido, `docker-entrypoint.sh` gera um token aleatório na hora e imprime
-nos logs em vez de recusar iniciar — o container nunca fica sem auth
-nenhuma).
-
-**Deploy.** `git clone` + `docker compose -f infra/prod/docker-compose.prod.yml
-up -d --build` sobe o PortWatch inteiro containerizado sem precisar
-instalar Node/Python/uv localmente nem configurar nada antes — pegue o
-token gerado em `docker compose logs backend` e cole no dashboard.
-`apps/web/Dockerfile` (nginx-unprivileged, non-root, serve o bundle
-estático e faz proxy de `/api/*` — incluindo o upgrade de WebSocket de
-`/api/v1/events` — para o backend) e
-`infra/prod/docker-compose.prod.yml` (backend + frontend + docker-socket-proxy,
-os três non-root/`read_only`/`cap_drop: ALL`/com limites de CPU-memória-PIDs,
-socket real montado só no proxy) são o que faz isso funcionar. TLS não está
-incluído — coloque um reverse proxy próprio na frente antes de expor fora
-de loopback. Netprobe fica de fora desse compose de propósito (namespace de
-rede incompatível com um backend containerizado — ver
-`infra/prod/README.md`); use-o via sandbox de dev/backend nativo se precisar
-de visibilidade de portas do host. Detalhes em `infra/prod/README.md` e
-[`docs/release/public-release-checklist.md`](docs/release/public-release-checklist.md)
-para o que ainda falta antes disso ser um release público.
-
-**WebSocket.** `/api/v1/events` transmite invalidações de snapshot em tempo
-real com desligamento gracioso; autentica via header `Authorization`
-(clientes não-browser) ou, quando ausente, via `{"token": "..."}` como
-primeira mensagem da conexão, com limites de tamanho de mensagem/token e
-rejeição de payload malformado — ver
-`docs/adr/0006-websocket-first-message-auth.md`. Conexões simultâneas são
-limitadas por processo (`PORTWATCH_WEBSOCKET_MAX_SUBSCRIBERS`, padrão 128);
-acima do limite, a conexão já autenticada é fechada com 1013.
-
-**Frontend.** Dashboard funcional (Overview/Containers/Networks/Ports)
-consumindo as APIs REST via TanStack Query e `/api/v1/events`
-(`useSnapshotEvents`) para invalidar as queries assim que o Collector
-publica um novo snapshot — o poll continua como fallback. O token da API é
-digitado em runtime pelo ícone de chave no header (`ApiTokenDialog`) e
-guardado só em `localStorage` deste navegador — nunca embutido no bundle
-JS compartilhado (ver ressalva de segurança, agora corrigida, abaixo). Uma
-resposta de validação (422, `detail` como array de erros do FastAPI, não
-string) é formatada com segurança em vez de quebrar a renderização
-(`formatProblemDetail`, `lib/api.ts`).
-
-Testes E2E (`apps/backend/tests/e2e/`, `make test-e2e`) sobem o sandbox
-real e validam o Collector fim a fim através do `docker-socket-proxy`/
-`netprobe` de verdade. Observabilidade: métricas Prometheus em
-`GET /metrics` (protegido pelo mesmo bearer token, cardinalidade de rota
-limitada, sem cache) e logs estruturados em JSON com `request_id`
-correlacionado por requisição e redação best-effort de segredos; tracing
-(OpenTelemetry) segue fora do MVP por decisão de escopo.
-
-**Ressalva de segurança anterior, corrigida em 2026-08-26:** o token do
-frontend costumava ser embutido em texto puro no bundle JS de produção
-(`VITE_API_TOKEN`, comportamento padrão do Vite) — inofensivo em loopback,
-mas extraível por qualquer um que carregasse a página fora dele. Corrigido:
-o token agora é digitado em runtime via `ApiTokenDialog` (ícone de chave no
-header) e guardado em `localStorage` por navegador. Detalhes completos em
-[`docs/security/threat-model.md`](docs/security/threat-model.md).
-
-Decisões arquiteturais registradas em `docs/adr/`. Para publicação pública,
-ver `CONTRIBUTING.md`, `.github/SECURITY.md` e `docs/README.md`.
 
 ## Licença
 
-[MIT](LICENSE).
+[MIT](LICENSE) — use, modifique, redistribua à vontade.
 
-## Estrutura
+## Desenvolvimento
 
-```
-apps/backend/   FastAPI + Collector (mesmo processo, ver ADR-0001), uv, Dockerfile de produção
-apps/web/       React + TypeScript + Vite + Tailwind + shadcn/ui, Dockerfile de produção
-docs/adr/       Architecture Decision Records
-docs/security/  modelo de ameaça e guia de implantação segura
-docs/release/   checklist de release público
-infra/dev/      sandbox Docker isolado para desenvolvimento
-infra/prod/     Compose de produção (backend + frontend + docker-socket-proxy)
-infra/netprobe/ utilitário host-only de portas ocupadas
-```
+<details>
+<summary>Requisitos, sandbox de dev e rodando localmente</summary>
 
-## Requisitos de desenvolvimento
+### Requisitos
 
 - Node 22 LTS (via `nvm`, ver `.nvmrc`)
 - pnpm (via `corepack`, já habilitado pelo Node)
 - Python 3.12 + [`uv`](https://docs.astral.sh/uv/)
 - Docker + Docker Compose (contexto **local**, nunca o do homelab de produção)
 
-## Sandbox de desenvolvimento
+### Sandbox de desenvolvimento
 
 Todo o desenvolvimento e teste roda contra um Docker isolado nesta máquina —
 nunca contra o Docker de produção do homelab (ver `CLAUDE.md`).
@@ -147,7 +154,7 @@ pelo Collector, ambos publicados só em `127.0.0.1` para o backend nativo
   `network_mode: host`, sem nenhum acesso ao socket Docker. Contrato HTTP em
   `infra/netprobe/README.md`.
 
-## Rodando localmente
+### Rodando localmente
 
 ```sh
 # Backend — http://127.0.0.1:8000, docs em /docs, contrato em /openapi.json
@@ -175,7 +182,7 @@ JS. `VITE_API_TOKEN` (env var no build) continua funcionando como atalho
 de conveniência para desenvolvimento local, mas não é mais necessário nem
 recomendado.
 
-Checagens de qualidade:
+### Checagens de qualidade
 
 ```sh
 cd apps/backend && uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest
@@ -199,3 +206,46 @@ cd apps/backend && docker build -t portwatch-backend .
 docker run --rm -p 8000:8000 -e PORTWATCH_API_TOKEN=<algo> portwatch-backend
 curl http://127.0.0.1:8000/health
 ```
+
+### Estrutura
+
+```
+apps/backend/   FastAPI + Collector (mesmo processo, ver ADR-0001), uv, Dockerfile de produção
+apps/web/       React + TypeScript + Vite + Tailwind + shadcn/ui, Dockerfile de produção
+docs/adr/       Architecture Decision Records
+docs/security/  modelo de ameaça e guia de implantação segura
+docs/release/   checklist de release público
+infra/dev/      sandbox Docker isolado para desenvolvimento
+infra/prod/     Compose de produção (backend + frontend + docker-socket-proxy)
+infra/netprobe/ utilitário host-only de portas ocupadas
+```
+
+### Detalhes técnicos
+
+O Collector coleta containers, redes e portas do sandbox via
+`docker-socket-proxy`/`netprobe`, publica snapshots atômicos em memória
+(índice O(1) para lookup por id/nome e uma visão-resumo pré-computada,
+`SnapshotOverview`, para `/health/ready` e `/api/v1/system/summary`) e
+expõe readiness real. Todas as rotas leem esses snapshots — nenhuma retorna
+dados de exemplo. Nem o Docker nem o netprobe são confiados às cegas: as
+respostas de ambos são validadas por shape antes de virar estado interno, e
+o cliente do netprobe usa `httpx.stream` para abortar uma resposta acima de
+1 MiB durante a transferência, não depois de já ter baixado tudo. Um ciclo
+do Collector tem orçamento de tempo e limites de contagem configuráveis
+(ADR-0007); estourar qualquer um falha o ciclo sem publicar um snapshot
+truncado. Autenticação por token estático (ADR-0004); erros no contrato RFC
+7807 completo; labels/env de containers redigidos por padrão. Respostas de
+`/api/v1/*` e `/metrics` levam `Cache-Control: no-store`; todo response leva
+`X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY`.
+
+`/api/v1/events` transmite invalidações de snapshot em tempo real via
+WebSocket, com desligamento gracioso, limite de conexões simultâneas e
+autenticação tanto por header quanto por primeira mensagem (clientes
+não-browser) — ver `docs/adr/0006-websocket-first-message-auth.md`. O
+dashboard consome REST + esse WebSocket via TanStack Query, com polling
+como fallback se a conexão cair. Testes E2E (`apps/backend/tests/e2e/`,
+`make test-e2e`) sobem o sandbox real e validam o Collector fim a fim.
+Observabilidade: métricas Prometheus em `GET /metrics` e logs estruturados
+em JSON com `request_id` correlacionado por requisição.
+
+</details>

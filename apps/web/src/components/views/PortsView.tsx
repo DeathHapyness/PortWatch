@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { Boxes, Check, Copy, Radio, Search, Server, Sparkles, X } from 'lucide-react'
 import * as React from 'react'
 
@@ -11,7 +12,16 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { PortState } from '@/lib/api'
 import { getPortStateBadgeInfo } from '@/lib/formatters'
-import { usePortsQuery } from '@/lib/queries'
+import { availablePortsQueryOptions, portsQueryOptions } from '@/lib/queries'
+
+// The Collector's snapshot only ever records ports it actually observed
+// occupied (published/host) — it never stores a "free" entry for every
+// unoccupied port in a range, that would be pointless to keep in memory.
+// "Free" is computed on demand by GET /api/v1/ports/available (the same
+// endpoint AvailablePortsFinder uses), not by the plain /api/v1/ports list.
+// Bounded well under the backend's own cap (1000) so a wide, mostly-empty
+// range doesn't hand the table thousands of rows to render.
+const FREE_FILTER_LIMIT = 500
 
 export function PortsView() {
   const [stateFilter, setStateFilter] = React.useState<PortState | 'all'>('all')
@@ -25,16 +35,27 @@ export function PortsView() {
     return { start: 1, end: 65535 }
   }, [rangePreset])
 
-  const {
-    data: portsData,
-    isLoading,
-    error,
-    refetch,
-  } = usePortsQuery({
-    state: stateFilter === 'all' ? undefined : stateFilter,
-    rangeStart: activeRange.start,
-    rangeEnd: activeRange.end,
+  const isFreeFilter = stateFilter === 'free'
+
+  const observedPorts = useQuery({
+    ...portsQueryOptions({
+      state: stateFilter === 'all' ? undefined : stateFilter,
+      rangeStart: activeRange.start,
+      rangeEnd: activeRange.end,
+    }),
+    enabled: !isFreeFilter,
   })
+
+  const freePorts = useQuery({
+    ...availablePortsQueryOptions({
+      rangeStart: activeRange.start,
+      rangeEnd: activeRange.end,
+      limit: FREE_FILTER_LIMIT,
+    }),
+    enabled: isFreeFilter,
+  })
+
+  const { data: portsData, isLoading, error, refetch } = isFreeFilter ? freePorts : observedPorts
 
   const filteredEntries = React.useMemo(() => {
     if (!portsData?.entries) return []

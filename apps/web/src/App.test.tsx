@@ -158,6 +158,53 @@ describe('App Dashboard', () => {
     expect(screen.getByText('Docker Published')).toBeInTheDocument()
   })
 
+  it('filters ports by Free state using the available-ports endpoint, not the plain ports list', async () => {
+    // Regression test: the Collector's snapshot only ever records ports it
+    // actually observed occupied (published/host) — GET /api/v1/ports
+    // never returns a "free" entry, no matter the state filter, because
+    // the Collector never stores one. "Free" only exists as a computed
+    // result from GET /api/v1/ports/available. The Free filter button used
+    // to query the former, which meant it always rendered zero results
+    // regardless of what was actually free — see PortsView.tsx.
+    const mockAvailablePorts = {
+      range_start: 1,
+      range_end: 10000,
+      entries: [
+        { port: 9000, protocol: 'tcp', state: 'free', owner: null },
+        { port: 9001, protocol: 'tcp', state: 'free', owner: null },
+      ],
+    }
+
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.includes('/api/v1/system/summary')) return jsonResponse(mockSystemSummary)
+      if (url.includes('/api/v1/ports/available')) return jsonResponse(mockAvailablePorts)
+      if (url.includes('/api/v1/ports')) return jsonResponse(mockPorts)
+      return jsonResponse({}, { status: 404 })
+    })
+
+    renderApp()
+
+    await screen.findByText('Docker 28.0.1')
+
+    const nav = screen.getByRole('navigation')
+    const portsTab = within(nav).getByRole('button', { name: /ports/i })
+    fireEvent.click(portsTab)
+
+    // "All States" (default) shows the observed/published port.
+    expect(await screen.findByText('8080')).toBeInTheDocument()
+
+    const freeButton = screen.getByRole('button', { name: 'Free' })
+    fireEvent.click(freeButton)
+
+    expect(await screen.findByText('9000')).toBeInTheDocument()
+    expect(screen.getByText('9001')).toBeInTheDocument()
+    expect(screen.queryByText('No ports matched the criteria')).not.toBeInTheDocument()
+    // The observed port (8080) isn't a "free" entry — shouldn't reappear
+    // once filtered to Free.
+    expect(screen.queryByText('8080')).not.toBeInTheDocument()
+  })
+
   it('switches to networks tab and displays docker networks', async () => {
     fetchMock.mockImplementation(async (input) => {
       const url = String(input)

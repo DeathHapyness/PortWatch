@@ -1,4 +1,13 @@
-import { Boxes, Clock, ExternalLink, Layers, Radio, Search, X } from 'lucide-react'
+import {
+  Boxes,
+  Clock,
+  ExternalLink,
+  Group as GroupIcon,
+  Layers,
+  Radio,
+  Search,
+  X,
+} from 'lucide-react'
 import * as React from 'react'
 
 import { EmptyState } from '@/components/common/EmptyState'
@@ -13,10 +22,70 @@ import type { ContainerDetail, ContainerStatus } from '@/lib/api'
 import { formatPort, formatRelativeTime, formatShortId, getStatusBadgeInfo } from '@/lib/formatters'
 import { useContainersQuery } from '@/lib/queries'
 
+// PortWatch never persists its own state (everything is derived live from
+// Docker — see CLAUDE.md) — a "category" can't be something typed into the
+// UI and remembered, it has to come from Docker itself. The Compose project
+// label is the closest thing to a free, zero-setup "category" that already
+// exists for most homelab setups (anyone running docker-compose stacks
+// already has it on every container, no configuration required here).
+const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project'
+const STANDALONE_GROUP = 'Standalone'
+const GROUP_BY_STACK_STORAGE_KEY = 'portwatch-containers-group-by-stack'
+
+function readGroupByStackPreference(): boolean {
+  try {
+    return localStorage.getItem(GROUP_BY_STACK_STORAGE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeGroupByStackPreference(value: boolean): void {
+  try {
+    localStorage.setItem(GROUP_BY_STACK_STORAGE_KEY, value ? '1' : '0')
+  } catch {
+    // Not fatal — the toggle just won't remember itself across reloads.
+  }
+}
+
+function groupByComposeStack(
+  containers: ContainerDetail[],
+): Array<{ name: string; containers: ContainerDetail[] }> {
+  const groups = new Map<string, ContainerDetail[]>()
+  for (const container of containers) {
+    const stack = container.labels[COMPOSE_PROJECT_LABEL] || STANDALONE_GROUP
+    const existing = groups.get(stack)
+    if (existing) {
+      existing.push(container)
+    } else {
+      groups.set(stack, [container])
+    }
+  }
+
+  // Standalone last regardless of alphabetical order — it's the "misc"
+  // bucket, not a real stack.
+  return [...groups.entries()]
+    .sort(([a], [b]) => {
+      if (a === STANDALONE_GROUP) return 1
+      if (b === STANDALONE_GROUP) return -1
+      return a.localeCompare(b)
+    })
+    .map(([name, groupContainers]) => ({ name, containers: groupContainers }))
+}
+
 export function ContainersView() {
   const [searchQuery, setSearchQuery] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<ContainerStatus | 'all'>('all')
   const [selectedContainerId, setSelectedContainerId] = React.useState<string | null>(null)
+  const [groupByStack, setGroupByStack] = React.useState<boolean>(readGroupByStackPreference)
+
+  const toggleGroupByStack = () => {
+    setGroupByStack((prev) => {
+      const next = !prev
+      writeGroupByStackPreference(next)
+      return next
+    })
+  }
 
   const {
     data: containers,
@@ -41,6 +110,11 @@ export function ContainersView() {
         c.id.toLowerCase().includes(q),
     )
   }, [containers, searchQuery])
+
+  const groupedContainers = React.useMemo(
+    () => (groupByStack ? groupByComposeStack(filteredContainers) : []),
+    [groupByStack, filteredContainers],
+  )
 
   const statuses: Array<{ value: ContainerStatus | 'all'; label: string }> = [
     { value: 'all', label: 'All Statuses' },
@@ -98,6 +172,18 @@ export function ContainersView() {
               </Button>
             ))}
           </div>
+
+          {/* Group-by-stack toggle */}
+          <Button
+            variant={groupByStack ? 'default' : 'outline'}
+            size="sm"
+            onClick={toggleGroupByStack}
+            className="gap-1.5 text-xs"
+            aria-pressed={groupByStack}
+          >
+            <GroupIcon className="size-3.5" />
+            {groupByStack ? 'Grouped by Stack' : 'Group by Stack'}
+          </Button>
         </div>
       </div>
 
@@ -133,6 +219,28 @@ export function ContainersView() {
             setStatusFilter('all')
           }}
         />
+      ) : groupByStack ? (
+        <div className="space-y-8">
+          {groupedContainers.map((group) => (
+            <div key={group.name}>
+              <div className="mb-3 flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-foreground">{group.name}</h3>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                  {group.containers.length}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {group.containers.map((container) => (
+                  <ContainerCard
+                    key={container.id}
+                    container={container}
+                    onInspect={() => setSelectedContainerId(container.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredContainers.map((container) => (

@@ -97,6 +97,7 @@ describe('App Dashboard', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     fetchMock.mockReset()
+    localStorage.clear()
   })
 
   it('renders the dashboard with system summary data', async () => {
@@ -135,6 +136,92 @@ describe('App Dashboard', () => {
     expect(await screen.findByText('portwatch-fixture-web')).toBeInTheDocument()
     expect(screen.getByText('nginx:alpine')).toBeInTheDocument()
     expect(screen.getByText('8080 → 80/TCP')).toBeInTheDocument()
+  })
+
+  it('groups containers by Docker Compose stack when toggled on', async () => {
+    // PortWatch never persists its own state (see CLAUDE.md) — "category"
+    // has to come from Docker itself. com.docker.compose.project is the
+    // grouping key ContainersView uses; a container without it falls into
+    // the "Standalone" bucket instead of being dropped.
+    const mockGroupedContainers = [
+      {
+        id: 'a'.repeat(64),
+        name: '/media-jellyfin',
+        image: 'jellyfin/jellyfin:latest',
+        status: 'running',
+        health: null,
+        created_at: '2026-08-24T00:50:00Z',
+        networks: ['bridge'],
+        ports: [],
+        labels: { 'com.docker.compose.project': 'media-server' },
+        command: null,
+        env_redacted: [],
+        mounts: [],
+      },
+      {
+        id: 'b'.repeat(64),
+        name: '/media-sonarr',
+        image: 'linuxserver/sonarr:latest',
+        status: 'running',
+        health: null,
+        created_at: '2026-08-24T00:50:00Z',
+        networks: ['bridge'],
+        ports: [],
+        labels: { 'com.docker.compose.project': 'media-server' },
+        command: null,
+        env_redacted: [],
+        mounts: [],
+      },
+      {
+        id: 'c'.repeat(64),
+        name: '/adhoc-debug-shell',
+        image: 'alpine:latest',
+        status: 'running',
+        health: null,
+        created_at: '2026-08-24T00:50:00Z',
+        networks: ['bridge'],
+        ports: [],
+        labels: {},
+        command: null,
+        env_redacted: [],
+        mounts: [],
+      },
+    ]
+
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.includes('/api/v1/system/summary')) return jsonResponse(mockSystemSummary)
+      if (url.includes('/api/v1/containers')) return jsonResponse(mockGroupedContainers)
+      return jsonResponse({}, { status: 404 })
+    })
+
+    renderApp()
+
+    await screen.findByText('Docker 28.0.1')
+
+    const nav = screen.getByRole('navigation')
+    fireEvent.click(within(nav).getByRole('button', { name: /containers/i }))
+
+    // Flat by default — no group headers, all three cards visible together.
+    expect(await screen.findByText('media-jellyfin')).toBeInTheDocument()
+    expect(screen.getByText('media-sonarr')).toBeInTheDocument()
+    expect(screen.getByText('adhoc-debug-shell')).toBeInTheDocument()
+    expect(screen.queryByText('media-server')).not.toBeInTheDocument()
+    expect(screen.queryByText('Standalone')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Group by Stack' }))
+
+    // Grouped: one header per compose project, the label-less container
+    // under "Standalone".
+    expect(await screen.findByText('media-server')).toBeInTheDocument()
+    expect(screen.getByText('Standalone')).toBeInTheDocument()
+    expect(screen.getByText('media-jellyfin')).toBeInTheDocument()
+    expect(screen.getByText('media-sonarr')).toBeInTheDocument()
+    expect(screen.getByText('adhoc-debug-shell')).toBeInTheDocument()
+
+    // Toggling off returns to the flat view.
+    fireEvent.click(screen.getByRole('button', { name: 'Grouped by Stack' }))
+    expect(screen.queryByText('Standalone')).not.toBeInTheDocument()
   })
 
   it('switches to ports tab and displays port matrix', async () => {

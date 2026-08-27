@@ -19,17 +19,29 @@ do sandbox de desenvolvimento, ver `docs/README.md`) em vez deste compose.
 ## Uso
 
 ```sh
-cd infra/prod
-export PORTWATCH_API_TOKEN="$(openssl rand -hex 32)"
-export PORTWATCH_CORS_ALLOW_ORIGINS='["https://portwatch.exemplo.com"]'
+git clone <este repositório>
+cd PortWatch/infra/prod
 docker compose -f docker-compose.prod.yml up -d --build
-curl http://127.0.0.1:8080/health
+docker compose -f docker-compose.prod.yml logs backend | grep PORTWATCH_API_TOKEN=
 ```
 
-Sem essas duas variáveis definidas, o `up` falha cedo com uma mensagem
-explicando qual falta — não existe fallback silencioso para "sem token" ou
-"sem CORS restrito" aqui (ao contrário do backend sozinho em dev, que aceita
-ambos vazios em loopback).
+Sem clonar mais nada além disso, sem instalar Node/Python/uv localmente, e
+sem precisar gerar nada à mão antes: se `PORTWATCH_API_TOKEN` não for
+definido, `apps/backend/docker-entrypoint.sh` gera um token aleatório na
+hora e imprime nos logs do container — cole-o no dashboard
+(`http://127.0.0.1:8080`, ícone de chave no header) e pronto. Esse token
+não é persistido (muda a cada `docker compose restart`/`up` sem
+`PORTWATCH_API_TOKEN` definido) — para um valor estável entre reinícios,
+defina a variável você mesmo antes do `up`:
+
+```sh
+export PORTWATCH_API_TOKEN="$(openssl rand -hex 32)"
+```
+
+`PORTWATCH_CORS_ALLOW_ORIGINS` já vem com o default correto
+(`["http://127.0.0.1:8080"]`) para a topologia padrão deste compose — só
+precisa ser definido se você também mudar a porta/host publicado do
+frontend (ex. atrás de um domínio real, ver seção abaixo).
 
 Validado manualmente nesta máquina (build + up + smoke test completo:
 estático, proxy de API sem/com token, a cadeia real

@@ -27,10 +27,16 @@
 # docs/security/operator-guide.md, seção "Exposição na rede"). Não publique
 # a porta do frontend diretamente na LAN/Internet sem essa camada.
 #
-# Segredos: PORTWATCH_API_TOKEN vem de variável de ambiente do shell/CI ou de
-# um arquivo .env não versionado ao lado deste arquivo — nunca hardcoded
-# aqui. Ver docs/reference/configuration.md para todas as variáveis restantes
-# e docs/security/operator-guide.md para os requisitos completos antes de
+# Segredos: rodar `docker compose up -d --build` sem definir nada funciona —
+# PORTWATCH_API_TOKEN vazio faz apps/backend/docker-entrypoint.sh gerar um
+# token aleatório na hora e imprimir nos logs do container (`docker compose
+# logs backend`), então não existe "primeiro passo é ir buscar uma API key"
+# antes de conseguir ver o dashboard funcionando. Esse token não é
+# persistido (muda a cada reinício) — para um valor estável, defina
+# PORTWATCH_API_TOKEN você mesmo via variável de ambiente do shell/CI ou um
+# arquivo .env não versionado ao lado deste arquivo (nunca hardcoded aqui).
+# Ver docs/reference/configuration.md para todas as variáveis restantes e
+# docs/security/operator-guide.md para os requisitos completos antes de
 # expor isto fora de loopback.
 
 services:
@@ -100,11 +106,21 @@ services:
     restart: unless-stopped
     environment:
       PORTWATCH_BIND_HOST: "0.0.0.0"
-      PORTWATCH_API_TOKEN: "${PORTWATCH_API_TOKEN:?defina um token longo e aleatório antes de subir em produção}"
+      # Vazio por padrão de propósito: docker-entrypoint.sh gera um token
+      # aleatório na hora se PORTWATCH_API_TOKEN não vier definido (e avisa
+      # nos logs do container) — ver apps/backend/docker-entrypoint.sh. Não
+      # falha silenciosamente sem auth: o próprio backend recusa iniciar
+      # sem token nenhum enquanto PORTWATCH_BIND_HOST não for loopback (e
+      # aqui nunca é, dentro do container). Defina PORTWATCH_API_TOKEN você
+      # mesmo para um token estável entre reinícios.
+      PORTWATCH_API_TOKEN: "${PORTWATCH_API_TOKEN:-}"
       PORTWATCH_DOCKER_PROXY_URL: "http://docker-socket-proxy:2375"
       # Lista JSON (não string simples) — mesmo formato aceito diretamente
-      # pelo Settings do backend, ver docs/reference/configuration.md.
-      PORTWATCH_CORS_ALLOW_ORIGINS: "${PORTWATCH_CORS_ALLOW_ORIGINS:?defina a lista JSON com a origem exata do dashboard, ex: [\"https://portwatch.exemplo.com\"]}"
+      # pelo Settings do backend, ver docs/reference/configuration.md. O
+      # default abaixo já é a origem correta para a topologia padrão deste
+      # compose (frontend sempre publicado em 127.0.0.1:8080) — só troque
+      # se você também mudar a porta/host publicado do frontend.
+      PORTWATCH_CORS_ALLOW_ORIGINS: '${PORTWATCH_CORS_ALLOW_ORIGINS:-["http://127.0.0.1:8080"]}'
       # PORTWATCH_NETPROBE_URL fica ausente de propósito — ver comentário no
       # topo deste arquivo sobre a incompatibilidade com esta topologia.
     # Sem `ports:` publicado no host — só o frontend fica exposto; o

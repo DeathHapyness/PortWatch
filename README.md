@@ -35,18 +35,24 @@ RFC 7807 completo; labels/env de containers redigidos por padrão (PW-03).
 Respostas de `/api/v1/*` e `/metrics` levam `Cache-Control: no-store`; todo
 response leva `X-Content-Type-Options: nosniff` e `X-Frame-Options: DENY`.
 Imagem de container de produção hardened em `apps/backend/Dockerfile`
-(non-root, multi-stage, `--no-server-header`, recusa iniciar fora de
-loopback sem token).
+(non-root, multi-stage, `--no-server-header`; sem `PORTWATCH_API_TOKEN`
+definido, `docker-entrypoint.sh` gera um token aleatório na hora e imprime
+nos logs em vez de recusar iniciar — o container nunca fica sem auth
+nenhuma).
 
-**Deploy.** `apps/web/Dockerfile` (nginx-unprivileged, non-root, serve o
-bundle estático e faz proxy de `/api/*` — incluindo o upgrade de WebSocket
-de `/api/v1/events` — para o backend) e
+**Deploy.** `git clone` + `docker compose -f infra/prod/docker-compose.prod.yml
+up -d --build` sobe o PortWatch inteiro containerizado sem precisar
+instalar Node/Python/uv localmente nem configurar nada antes — pegue o
+token gerado em `docker compose logs backend` e cole no dashboard.
+`apps/web/Dockerfile` (nginx-unprivileged, non-root, serve o bundle
+estático e faz proxy de `/api/*` — incluindo o upgrade de WebSocket de
+`/api/v1/events` — para o backend) e
 `infra/prod/docker-compose.prod.yml` (backend + frontend + docker-socket-proxy,
 os três non-root/`read_only`/`cap_drop: ALL`/com limites de CPU-memória-PIDs,
-socket real montado só no proxy) sobem o PortWatch inteiro containerizado.
-TLS não está incluído — coloque um reverse proxy próprio na frente antes de
-expor fora de loopback. Netprobe fica de fora desse compose de propósito
-(namespace de rede incompatível com um backend containerizado — ver
+socket real montado só no proxy) são o que faz isso funcionar. TLS não está
+incluído — coloque um reverse proxy próprio na frente antes de expor fora
+de loopback. Netprobe fica de fora desse compose de propósito (namespace de
+rede incompatível com um backend containerizado — ver
 `infra/prod/README.md`); use-o via sandbox de dev/backend nativo se precisar
 de visibilidade de portas do host. Detalhes em `infra/prod/README.md` e
 [`docs/release/public-release-checklist.md`](docs/release/public-release-checklist.md)

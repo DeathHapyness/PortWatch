@@ -36,7 +36,11 @@ interna do compose.
 
 Para acesso fora do próprio host:
 
-1. configure um token longo e aleatório;
+1. configure um token longo e aleatório — não use o token que
+   `apps/backend/docker-entrypoint.sh` gera sozinho quando
+   `PORTWATCH_API_TOKEN` não é definido: ele existe só para "cloná e suba"
+   em loopback sem fricção, muda a cada reinício e nunca foi pensado para
+   sobreviver a uma exposição real;
 2. termine TLS em um reverse proxy mantido;
 3. aplique uma camada adicional de acesso, como VPN privada ou autenticação do
    proxy;

@@ -178,6 +178,61 @@ jobs:
         if: always()
         run: docker compose -f docker-compose.prod.yml down --rmi local
 
+  prod-images-zero-config:
+    name: Production images (zero-config quickstart)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Companion to `prod-images` above, with no PORTWATCH_API_TOKEN or
+    # PORTWATCH_CORS_ALLOW_ORIGINS set at all — the actual "clone and
+    # `docker compose up`, nothing to configure first" path documented in
+    # infra/prod/README.md. Regression guard for
+    # apps/backend/docker-entrypoint.sh's auto-generated token specifically
+    # (the `prod-images` job above always provides an explicit token, so it
+    # would never catch that path breaking).
+    env:
+      COMPOSE_PROJECT_NAME: portwatch-prod-ci-zeroconf
+    defaults:
+      run:
+        working-directory: infra/prod
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Build and start the production stack with no env vars set
+        run: docker compose -f docker-compose.prod.yml up -d --build
+      - name: Wait for backend and frontend healthchecks
+        run: |
+          for _ in $(seq 1 30); do
+            backend_status=$(docker inspect -f '{{.State.Health.Status}}' portwatch-prod-ci-zeroconf-backend-1 2>/dev/null || echo "")
+            frontend_status=$(docker inspect -f '{{.State.Health.Status}}' portwatch-prod-ci-zeroconf-frontend-1 2>/dev/null || echo "")
+            if [ "$backend_status" = "healthy" ] && [ "$frontend_status" = "healthy" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "backend/frontend never became healthy within 60s" >&2
+          docker compose -f docker-compose.prod.yml logs
+          exit 1
+      - name: Extract the auto-generated token from the container logs and use it
+        run: |
+          set -e
+          token=$(docker logs portwatch-prod-ci-zeroconf-backend-1 2>&1 | sed -n 's/.*PORTWATCH_API_TOKEN=\([0-9a-f]\{64\}\).*/\1/p' | head -1)
+          if [ -z "$token" ]; then
+            echo "no auto-generated token found in backend logs" >&2
+            docker logs portwatch-prod-ci-zeroconf-backend-1 >&2
+            exit 1
+          fi
+          curl -fsS http://127.0.0.1:8080/api/v1/system/summary \
+            -H "Authorization: Bearer ${token}" | grep -q portwatch_status
+      - name: Default CORS origin (127.0.0.1:8080) is accepted with no override
+        run: |
+          set -e
+          origin=$(curl -s -o /dev/null -D - -X OPTIONS http://127.0.0.1:8080/api/v1/system/summary \
+            -H "Origin: http://127.0.0.1:8080" \
+            -H "Access-Control-Request-Method: GET" | grep -i '^access-control-allow-origin:')
+          echo "$origin" | grep -q 'http://127.0.0.1:8080'
+      - name: Teardown
+        if: always()
+        run: docker compose -f docker-compose.prod.yml down --rmi local
+
   backend:
     name: Backend (lint, type-check, test)
     runs-on: ubuntu-latest

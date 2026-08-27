@@ -17,7 +17,7 @@ silenciosamente para um default.
 | `PORTWATCH_ENVIRONMENT` | `development` | livre, apenas identificação |
 | `PORTWATCH_LOG_LEVEL` | `INFO` | `CRITICAL`\|`ERROR`\|`WARNING`\|`INFO`\|`DEBUG` (case-insensitive) |
 | `PORTWATCH_BIND_HOST` | `127.0.0.1` | declaração do bind real do processo — **precisa ficar em sincronia com o `--host` de verdade do uvicorn**; não loopback + token vazio recusa iniciar (ver abaixo) |
-| `PORTWATCH_API_TOKEN` | `` (vazio) | vazio = sem autenticação (só aceito em loopback); não pode ser só espaços em branco |
+| `PORTWATCH_API_TOKEN` | `` (vazio) | vazio = sem autenticação (só aceito em loopback); não pode ser só espaços em branco. Na imagem de produção do backend (`apps/backend/Dockerfile`), `PORTWATCH_BIND_HOST` nunca é loopback, então vazio aqui faz `docker-entrypoint.sh` gerar um token aleatório na hora (impresso nos logs do container) em vez de recusar iniciar — ver `infra/prod/README.md`. |
 | `PORTWATCH_CORS_ALLOW_ORIGINS` | `["http://localhost:5173"]` | lista de origens exatas como **array JSON** (não string separada por vírgula — ex. `["https://portwatch.exemplo.com"]`); `*` é rejeitado |
 | `PORTWATCH_DOCKER_PROXY_URL` | `http://docker-socket-proxy:2375` | URL http(s) absoluta, sem espaço, sem credenciais embutidas |
 | `PORTWATCH_NETPROBE_URL` | `null` (desabilitado) | mesma validação de URL acima; `null`/ausente desliga a leitura de portas do host |

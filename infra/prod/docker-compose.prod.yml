@@ -22,10 +22,15 @@
 # `host_ports_enabled` aparece `false` na API — comportamento já suportado,
 # não um erro.
 #
-# TLS não está incluído. O frontend expõe HTTP simples em 8080; termine TLS
-# em um reverse proxy mantido por você na frente deste compose (ver
-# docs/security/operator-guide.md, seção "Exposição na rede"). Não publique
-# a porta do frontend diretamente na LAN/Internet sem essa camada.
+# TLS não está incluído. O frontend expõe HTTP simples, publicado por
+# padrão em 127.0.0.1:8087 no host (8087, não 8080, porque essa é uma porta
+# comum demais em homelabs — Portainer, outros dashboards — e colidir com
+# algo já rodando é o erro mais provável no primeiro `up`; troque com
+# PORTWATCH_FRONTEND_PUBLISH se 8087 também já estiver em uso, ver comentário
+# no serviço `frontend` abaixo). Termine TLS em um reverse proxy mantido por
+# você na frente deste compose (ver docs/security/operator-guide.md, seção
+# "Exposição na rede"). Não publique a porta do frontend diretamente na
+# LAN/Internet sem essa camada.
 #
 # Segredos: rodar `docker compose up -d --build` sem definir nada funciona —
 # PORTWATCH_API_TOKEN vazio faz apps/backend/docker-entrypoint.sh gerar um
@@ -118,13 +123,13 @@ services:
       # Lista JSON (não string simples) — mesmo formato aceito diretamente
       # pelo Settings do backend, ver docs/reference/configuration.md. As
       # duas origens abaixo apontam para a mesma coisa (frontend sempre
-      # publicado em 127.0.0.1:8080) — incluídas as duas porque navegadores
-      # tratam "localhost" e "127.0.0.1" como origens diferentes para CORS,
-      # mesmo resolvendo para o mesmo lugar; sem isso, abrir o dashboard em
-      # http://localhost:8080 (hábito comum) falharia silenciosamente por
-      # CORS. Só troque se você também mudar a porta/host publicado do
-      # frontend.
-      PORTWATCH_CORS_ALLOW_ORIGINS: '${PORTWATCH_CORS_ALLOW_ORIGINS:-["http://127.0.0.1:8080", "http://localhost:8080"]}'
+      # publicado em 127.0.0.1:8087 por padrão) — incluídas as duas porque
+      # navegadores tratam "localhost" e "127.0.0.1" como origens diferentes
+      # para CORS, mesmo resolvendo para o mesmo lugar; sem isso, abrir o
+      # dashboard em http://localhost:8087 (hábito comum) falharia
+      # silenciosamente por CORS. Precisa bater com PORTWATCH_FRONTEND_PUBLISH
+      # abaixo — se você mudar um, mude o outro.
+      PORTWATCH_CORS_ALLOW_ORIGINS: '${PORTWATCH_CORS_ALLOW_ORIGINS:-["http://127.0.0.1:8087", "http://localhost:8087"]}'
       # PORTWATCH_NETPROBE_URL fica ausente de propósito — ver comentário no
       # topo deste arquivo sobre a incompatibilidade com esta topologia.
     # Sem `ports:` publicado no host — só o frontend fica exposto; o
@@ -163,18 +168,22 @@ services:
       # um reverse proxy mantido na frente antes de expor fora de loopback
       # (ver comentário no topo deste arquivo).
       #
-      # Default é loopback (só alcançável de dentro do próprio host). Para
-      # acessar de outra máquina (ex. o IP real do seu server na LAN), defina
-      # PORTWATCH_FRONTEND_PUBLISH — e lembre de incluir a origem
-      # correspondente em PORTWATCH_CORS_ALLOW_ORIGINS acima, ou toda
+      # Default é loopback na porta 8087 (só alcançável de dentro do próprio
+      # host; 8087 em vez do mais óbvio 8080 porque essa é uma porta comum
+      # demais em homelabs, ver comentário no topo do arquivo). Se 8087
+      # também já estiver em uso no seu host ("port is already allocated"),
+      # ou se quiser acessar de outra máquina (ex. o IP real do seu server
+      # na LAN), defina PORTWATCH_FRONTEND_PUBLISH — e lembre de incluir a
+      # origem correspondente em PORTWATCH_CORS_ALLOW_ORIGINS acima, ou toda
       # chamada de API do dashboard vai falhar por CORS mesmo com a página
       # carregando normalmente. Exemplo para expor na LAN em
-      # 192.168.1.50:8080:
-      #   PORTWATCH_FRONTEND_PUBLISH=192.168.1.50:8080 \
-      #   PORTWATCH_CORS_ALLOW_ORIGINS='["http://192.168.1.50:8080"]' \
+      # 192.168.1.50:8087:
+      #   PORTWATCH_FRONTEND_PUBLISH=192.168.1.50:8087 \
+      #   PORTWATCH_CORS_ALLOW_ORIGINS='["http://192.168.1.50:8087"]' \
       #   docker compose -f docker-compose.prod.yml up -d --build
-      # Ou 0.0.0.0:8080 para aceitar em qualquer interface do host.
-      - "${PORTWATCH_FRONTEND_PUBLISH:-127.0.0.1:8080}:8080"
+      # Ou 0.0.0.0:8087 para aceitar em qualquer interface do host, ou
+      # qualquer outra porta livre (127.0.0.1:8090, etc.) se preferir.
+      - "${PORTWATCH_FRONTEND_PUBLISH:-127.0.0.1:8087}:8080"
     depends_on:
       - backend
     networks:

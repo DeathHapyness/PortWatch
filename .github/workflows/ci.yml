@@ -125,7 +125,7 @@ jobs:
     # outside this job.
     env:
       PORTWATCH_API_TOKEN: ci-smoke-test-token-not-a-real-secret
-      PORTWATCH_CORS_ALLOW_ORIGINS: '["http://127.0.0.1:8080"]'
+      PORTWATCH_CORS_ALLOW_ORIGINS: '["http://127.0.0.1:8087"]'
       COMPOSE_PROJECT_NAME: portwatch-prod-ci
     defaults:
       run:
@@ -134,6 +134,9 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Validate compose config
         run: docker compose -f docker-compose.prod.yml config >/dev/null
+      - name: Validate the root docker-compose.yml (include:) resolves the same way
+        working-directory: .
+        run: docker compose -f docker-compose.yml config >/dev/null
       - name: Build and start the production stack
         run: docker compose -f docker-compose.prod.yml up -d --build
       - name: Wait for backend and frontend healthchecks
@@ -152,15 +155,15 @@ jobs:
       - name: Smoke test through the frontend proxy
         run: |
           set -e
-          curl -fsS http://127.0.0.1:8080/ >/dev/null
+          curl -fsS http://127.0.0.1:8087/ >/dev/null
           # No token: real 401 problem+json from the backend, proxied through.
-          [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/system/summary)" = "401" ]
-          curl -fsS http://127.0.0.1:8080/api/v1/system/summary \
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8087/api/v1/system/summary)" = "401" ]
+          curl -fsS http://127.0.0.1:8087/api/v1/system/summary \
             -H "Authorization: Bearer ${PORTWATCH_API_TOKEN}" | grep -q portwatch_status
       - name: Backend does not leak a Server header (--no-server-header)
         # Checked against the backend container directly, not through the
         # frontend proxy — nginx sets its own Server header regardless of
-        # what the backend sends, so going through 8080 would test nginx,
+        # what the backend sends, so going through 8087 would test nginx,
         # not the flag this step exists to catch a regression in.
         run: |
           docker exec portwatch-prod-ci-backend-1 python -c "
@@ -173,7 +176,7 @@ jobs:
           set -e
           [ -z "$(docker port portwatch-prod-ci-docker-socket-proxy-1 2>/dev/null)" ]
           [ -z "$(docker port portwatch-prod-ci-backend-1 2>/dev/null)" ]
-          docker port portwatch-prod-ci-frontend-1 | grep -q '127.0.0.1:8080'
+          docker port portwatch-prod-ci-frontend-1 | grep -q '127.0.0.1:8087'
       - name: Teardown
         if: always()
         run: docker compose -f docker-compose.prod.yml down --rmi local
@@ -220,9 +223,9 @@ jobs:
             docker logs portwatch-prod-ci-zeroconf-backend-1 >&2
             exit 1
           fi
-          curl -fsS http://127.0.0.1:8080/api/v1/system/summary \
+          curl -fsS http://127.0.0.1:8087/api/v1/system/summary \
             -H "Authorization: Bearer ${token}" | grep -q portwatch_status
-      - name: Default CORS origins (127.0.0.1:8080 and localhost:8080) are both accepted with no override
+      - name: Default CORS origins (127.0.0.1:8087 and localhost:8087) are both accepted with no override
         # Browsers treat "localhost" and "127.0.0.1" as different origins for
         # CORS even though they resolve to the same place — both need to be
         # in the default or opening the dashboard at the other one silently
@@ -230,10 +233,10 @@ jobs:
         run: |
           set -e
           for host in 127.0.0.1 localhost; do
-            origin=$(curl -s -o /dev/null -D - -X OPTIONS http://127.0.0.1:8080/api/v1/system/summary \
-              -H "Origin: http://${host}:8080" \
+            origin=$(curl -s -o /dev/null -D - -X OPTIONS http://127.0.0.1:8087/api/v1/system/summary \
+              -H "Origin: http://${host}:8087" \
               -H "Access-Control-Request-Method: GET" | grep -i '^access-control-allow-origin:')
-            echo "$origin" | grep -q "http://${host}:8080"
+            echo "$origin" | grep -q "http://${host}:8087"
           done
       - name: Teardown
         if: always()

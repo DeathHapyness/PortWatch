@@ -1,0 +1,19 @@
+# Exemplo pronto pra usar — este arquivo só inclui o compose de produção
+# real (infra/prod/docker-compose.prod.yml), pra quem estiver navegando o
+# repositório achar de cara e não precisar entrar em infra/prod/ primeiro.
+# Não duplica nada: é sempre exatamente o mesmo arquivo mantido, nunca uma
+# cópia que pode ficar desatualizada.
+#
+# Uso:
+#   git clone <este repositório> && cd PortWatch
+#   docker compose up -d --build
+#   docker compose logs backend | grep PORTWATCH_API_TOKEN=
+#
+# Sem nada mais pra configurar antes — token gerado sozinho se você não
+# definir PORTWATCH_API_TOKEN (ver infra/prod/README.md). Publica em
+# http://127.0.0.1:8087 por padrão.
+#
+# Detalhes completos, variáveis, como acessar de outra máquina e o que
+# fica de fora de propósito (Netprobe, TLS): infra/prod/README.md.
+include:
+  - infra/prod/docker-compose.prod.yml

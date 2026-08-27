@@ -4,7 +4,7 @@
 (GET-only, único mount do socket real, sem porta publicada), `backend`
 (construído de `apps/backend/Dockerfile`, sem porta publicada) e `frontend`
 (construído de `apps/web/Dockerfile`, único serviço publicado, em
-`127.0.0.1:8080`). Todos os três rodam non-root, `read_only`, `cap_drop: ALL`,
+`127.0.0.1:8087`). Todos os três rodam non-root, `read_only`, `cap_drop: ALL`,
 `no-new-privileges` e com limites de CPU/memória/PIDs — ver comentários no
 próprio compose para o porquê de cada escolha.
 
@@ -25,11 +25,23 @@ docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml logs backend | grep PORTWATCH_API_TOKEN=
 ```
 
+Se o `up` falhar com `port is already allocated`, a porta escolhida (8087
+por padrão) já está em uso por outra coisa no seu host — bem comum em
+homelab (Portainer, outro dashboard, um proxy que já existe). Descubra o
+que é (`sudo ss -tlnp | grep :8087` ou `docker ps -a --filter publish=8087`)
+e, se não for algo que você queira derrubar, troque a porta:
+
+```sh
+export PORTWATCH_FRONTEND_PUBLISH=127.0.0.1:8090   # qualquer porta livre
+export PORTWATCH_CORS_ALLOW_ORIGINS='["http://127.0.0.1:8090", "http://localhost:8090"]'
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
 Sem clonar mais nada além disso, sem instalar Node/Python/uv localmente, e
 sem precisar gerar nada à mão antes: se `PORTWATCH_API_TOKEN` não for
 definido, `apps/backend/docker-entrypoint.sh` gera um token aleatório na
 hora e imprime nos logs do container — cole-o no dashboard
-(`http://127.0.0.1:8080`, ícone de chave no header) e pronto. Esse token
+(`http://127.0.0.1:8087`, ícone de chave no header) e pronto. Esse token
 não é persistido (muda a cada `docker compose restart`/`up` sem
 `PORTWATCH_API_TOKEN` definido) — para um valor estável entre reinícios,
 defina a variável você mesmo antes do `up`:
@@ -39,7 +51,7 @@ export PORTWATCH_API_TOKEN="$(openssl rand -hex 32)"
 ```
 
 `PORTWATCH_CORS_ALLOW_ORIGINS` já vem com o default correto
-(`127.0.0.1:8080` e `localhost:8080` — os navegadores tratam os dois como
+(`127.0.0.1:8087` e `localhost:8087` — os navegadores tratam os dois como
 origens diferentes mesmo sendo o mesmo lugar) para a topologia padrão deste
 compose — só precisa ser definido se você também mudar a porta/host
 publicado do frontend (ex. atrás de um domínio real, ver seção abaixo).
@@ -54,15 +66,15 @@ operador real (fora de um runner efêmero de CI).
 
 ## Acessar de outra máquina (IP do seu server, não localhost)
 
-O default publica só em `127.0.0.1:8080` — só alcançável de dentro do
+O default publica só em `127.0.0.1:8087` — só alcançável de dentro do
 próprio host. Se o seu navegador está em outra máquina (o caso comum de
 "testar no meu server": você acessa o dashboard do seu notebook, não do
 console do server), defina onde publicar e ajuste o CORS para bater com a
 URL que você vai realmente usar no navegador:
 
 ```sh
-export PORTWATCH_FRONTEND_PUBLISH=192.168.1.50:8080   # o IP real do seu server
-export PORTWATCH_CORS_ALLOW_ORIGINS='["http://192.168.1.50:8080"]'
+export PORTWATCH_FRONTEND_PUBLISH=192.168.1.50:8087   # o IP real do seu server
+export PORTWATCH_CORS_ALLOW_ORIGINS='["http://192.168.1.50:8087"]'
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 

@@ -1,0 +1,60 @@
+# Rendered from this template at container startup by nginx's built-in
+# envsubst-on-templates entrypoint hook (/etc/nginx/templates/*.template ->
+# /etc/nginx/conf.d/*.conf). ${PORTWATCH_BACKEND_URL} comes from the
+# container's environment — see apps/web/Dockerfile and
+# docs/reference/configuration.md. This file is included inside the main
+# image's `http {}` block, so a top-level `map` directive here is valid.
+
+# Only actual WebSocket upgrade requests get "Connection: upgrade"; every
+# other request (the vast majority of /api/ traffic) gets a normal
+# keep-alive connection to the backend instead of being force-upgraded.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      '';
+}
+
+server {
+    listen 8080;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # The dashboard is a single static bundle with no client-side routing
+    # today; the fallback is kept anyway so a deep link to an unknown path
+    # still serves the app instead of a bare 404.
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options DENY always;
+    }
+
+    # Fingerprinted build assets (Vite content-hashed filenames) are safe to
+    # cache aggressively; index.html itself is intentionally excluded above
+    # so a new deploy is picked up on next load instead of being pinned by
+    # a stale cached shell.
+    location /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Content-Type-Options nosniff always;
+    }
+
+    # Everything under /api/, including the /api/v1/events WebSocket
+    # upgrade, is proxied to the backend. The backend is the actual
+    # authority on auth/cache/security headers for its own responses; this
+    # proxy does not strip or override them.
+    location /api/ {
+        proxy_pass ${PORTWATCH_BACKEND_URL};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket upgrade for /api/v1/events. Plain HTTP requests don't
+        # send an Upgrade header, so this is a no-op for them.
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 1h;
+    }
+}

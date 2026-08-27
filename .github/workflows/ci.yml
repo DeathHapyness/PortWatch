@@ -112,6 +112,72 @@ jobs:
         run: uv sync --locked --all-groups
       - run: make test-e2e
 
+  prod-images:
+    name: Production images (build + compose + smoke test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Builds the actual images an operator would run
+    # (apps/backend/Dockerfile, apps/web/Dockerfile) and brings up the real
+    # infra/prod/docker-compose.prod.yml — docker-socket-proxy + backend +
+    # frontend, wired together exactly as documented in
+    # infra/prod/README.md — against the runner's own Docker daemon. The
+    # token/CORS values below are fixed CI-only placeholders, never used
+    # outside this job.
+    env:
+      PORTWATCH_API_TOKEN: ci-smoke-test-token-not-a-real-secret
+      PORTWATCH_CORS_ALLOW_ORIGINS: '["http://127.0.0.1:8080"]'
+      COMPOSE_PROJECT_NAME: portwatch-prod-ci
+    defaults:
+      run:
+        working-directory: infra/prod
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Validate compose config
+        run: docker compose -f docker-compose.prod.yml config >/dev/null
+      - name: Build and start the production stack
+        run: docker compose -f docker-compose.prod.yml up -d --build
+      - name: Wait for backend and frontend healthchecks
+        run: |
+          for _ in $(seq 1 30); do
+            backend_status=$(docker inspect -f '{{.State.Health.Status}}' portwatch-prod-ci-backend-1 2>/dev/null || echo "")
+            frontend_status=$(docker inspect -f '{{.State.Health.Status}}' portwatch-prod-ci-frontend-1 2>/dev/null || echo "")
+            if [ "$backend_status" = "healthy" ] && [ "$frontend_status" = "healthy" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "backend/frontend never became healthy within 60s" >&2
+          docker compose -f docker-compose.prod.yml logs
+          exit 1
+      - name: Smoke test through the frontend proxy
+        run: |
+          set -e
+          curl -fsS http://127.0.0.1:8080/ >/dev/null
+          # No token: real 401 problem+json from the backend, proxied through.
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/system/summary)" = "401" ]
+          curl -fsS http://127.0.0.1:8080/api/v1/system/summary \
+            -H "Authorization: Bearer ${PORTWATCH_API_TOKEN}" | grep -q portwatch_status
+      - name: Backend does not leak a Server header (--no-server-header)
+        # Checked against the backend container directly, not through the
+        # frontend proxy — nginx sets its own Server header regardless of
+        # what the backend sends, so going through 8080 would test nginx,
+        # not the flag this step exists to catch a regression in.
+        run: |
+          docker exec portwatch-prod-ci-backend-1 python -c "
+          import sys, urllib.request
+          headers = urllib.request.urlopen('http://127.0.0.1:8000/health').headers
+          sys.exit('Server' in headers)
+          "
+      - name: Only the frontend publishes a host port
+        run: |
+          set -e
+          [ -z "$(docker port portwatch-prod-ci-docker-socket-proxy-1 2>/dev/null)" ]
+          [ -z "$(docker port portwatch-prod-ci-backend-1 2>/dev/null)" ]
+          docker port portwatch-prod-ci-frontend-1 | grep -q '127.0.0.1:8080'
+      - name: Teardown
+        if: always()
+        run: docker compose -f docker-compose.prod.yml down --rmi local
+
   backend:
     name: Backend (lint, type-check, test)
     runs-on: ubuntu-latest

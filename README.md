@@ -38,6 +38,20 @@ Imagem de container de produção hardened em `apps/backend/Dockerfile`
 (non-root, multi-stage, `--no-server-header`, recusa iniciar fora de
 loopback sem token).
 
+**Deploy.** `apps/web/Dockerfile` (nginx-unprivileged, non-root, serve o
+bundle estático e faz proxy de `/api/*` — incluindo o upgrade de WebSocket
+de `/api/v1/events` — para o backend) e
+`infra/prod/docker-compose.prod.yml` (backend + frontend + docker-socket-proxy,
+os três non-root/`read_only`/`cap_drop: ALL`/com limites de CPU-memória-PIDs,
+socket real montado só no proxy) sobem o PortWatch inteiro containerizado.
+TLS não está incluído — coloque um reverse proxy próprio na frente antes de
+expor fora de loopback. Netprobe fica de fora desse compose de propósito
+(namespace de rede incompatível com um backend containerizado — ver
+`infra/prod/README.md`); use-o via sandbox de dev/backend nativo se precisar
+de visibilidade de portas do host. Detalhes em `infra/prod/README.md` e
+[`docs/release/public-release-checklist.md`](docs/release/public-release-checklist.md)
+para o que ainda falta antes disso ser um release público.
+
 **WebSocket.** `/api/v1/events` transmite invalidações de snapshot em tempo
 real com desligamento gracioso; autentica via header `Authorization`
 (clientes não-browser) ou, quando ausente, via `{"token": "..."}` como
@@ -85,11 +99,12 @@ ver `CONTRIBUTING.md`, `.github/SECURITY.md` e `docs/README.md`.
 
 ```
 apps/backend/   FastAPI + Collector (mesmo processo, ver ADR-0001), uv, Dockerfile de produção
-apps/web/       React + TypeScript + Vite + Tailwind + shadcn/ui
+apps/web/       React + TypeScript + Vite + Tailwind + shadcn/ui, Dockerfile de produção
 docs/adr/       Architecture Decision Records
 docs/security/  modelo de ameaça e guia de implantação segura
 docs/release/   checklist de release público
 infra/dev/      sandbox Docker isolado para desenvolvimento
+infra/prod/     Compose de produção (backend + frontend + docker-socket-proxy)
 infra/netprobe/ utilitário host-only de portas ocupadas
 ```
 

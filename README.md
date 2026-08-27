@@ -21,8 +21,9 @@ docker compose logs backend | grep PORTWATCH_API_TOKEN=
 ```
 
 Abre `http://127.0.0.1:8087`, cola o token (ícone de chave no header) e
-pronto — sem configurar nada antes. Deu conflito de porta? Veja
-[`infra/prod/README.md`](infra/prod/README.md).
+pronto — sem configurar nada antes. Deu erro, ou quer acessar de outra
+máquina na sua rede? [`infra/prod/README.md`](infra/prod/README.md#problemas-comuns)
+tem os problemas mais comuns resolvidos passo a passo.
 
 <p align="center">
   <img src="docs/assets/screenshot-overview.png" alt="Dashboard de overview do PortWatch mostrando containers, portas e redes em tempo real" width="49%">

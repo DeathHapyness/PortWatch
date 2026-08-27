@@ -25,17 +25,10 @@ docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml logs backend | grep PORTWATCH_API_TOKEN=
 ```
 
-Se o `up` falhar com `port is already allocated`, a porta escolhida (8087
-por padrão) já está em uso por outra coisa no seu host — bem comum em
-homelab (Portainer, outro dashboard, um proxy que já existe). Descubra o
-que é (`sudo ss -tlnp | grep :8087` ou `docker ps -a --filter publish=8087`)
-e, se não for algo que você queira derrubar, troque a porta:
-
-```sh
-export PORTWATCH_FRONTEND_PUBLISH=127.0.0.1:8090   # qualquer porta livre
-export PORTWATCH_CORS_ALLOW_ORIGINS='["http://127.0.0.1:8090", "http://localhost:8090"]'
-docker compose -f docker-compose.prod.yml up -d --build
-```
+Deu algum erro, ou o `docker compose ps` não mostra o que você esperava?
+Ver ["Problemas comuns"](#problemas-comuns) no fim deste documento antes de
+mais nada — cobre os dois erros mais prováveis (porta já em uso, e não
+conseguir acessar de outra máquina) passo a passo.
 
 Sem clonar mais nada além disso, sem instalar Node/Python/uv localmente, e
 sem precisar gerar nada à mão antes: se `PORTWATCH_API_TOKEN` não for
@@ -93,3 +86,86 @@ veja
 [`../../docs/security/operator-guide.md`](../../docs/security/operator-guide.md)
 para TLS/reverse proxy e o restante dos requisitos mínimos antes de expor
 para além da sua própria LAN de confiança.
+
+## Problemas comuns
+
+### `Bind for 0.0.0.0:8087 failed: port is already allocated`
+
+A porta escolhida (8087 por padrão) já está em uso por outra coisa no seu
+host — bem comum em homelab (Portainer, outro dashboard, um proxy que já
+existe). Descubra o que é:
+
+```sh
+sudo ss -tlnp | grep :8087
+# ou
+docker ps -a --filter publish=8087
+```
+
+Se não for algo que você queira derrubar, troque a porta:
+
+```sh
+export PORTWATCH_FRONTEND_PUBLISH=127.0.0.1:8090   # qualquer porta livre
+export PORTWATCH_CORS_ALLOW_ORIGINS='["http://127.0.0.1:8090", "http://localhost:8090"]'
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+### Defini `PORTWATCH_FRONTEND_PUBLISH`, mas `docker compose ps` ainda mostra `127.0.0.1:8087`
+
+De longe o erro mais comum ao tentar acessar de outra máquina. Duas causas
+possíveis, as duas com a mesma raiz — as variáveis `export`adas não
+chegaram até o `docker compose up`:
+
+1. **`export` e `up` em sessões de shell diferentes.** Se você exportou a
+   variável, depois abriu outra aba do terminal, reconectou o SSH, ou rodou
+   os comandos em blocos separados, o valor exportado se perde — `export`
+   só vale pro processo do shell atual e seus filhos diretos. Rode tudo de
+   uma vez, sem trocar de sessão no meio:
+
+   ```sh
+   docker compose down
+   export PORTWATCH_FRONTEND_PUBLISH=<SEU_IP>:8087
+   export PORTWATCH_CORS_ALLOW_ORIGINS='["http://<SEU_IP>:8087"]'
+   docker compose up -d --build
+   docker compose ps   # PORTS deve mostrar <SEU_IP>:8087, não 127.0.0.1:8087
+   ```
+
+2. **`docker compose up` sem `down` antes, num container que já existia.**
+   O Compose normalmente recria um serviço sozinho quando a config muda,
+   mas se algo ficou num estado estranho de uma tentativa anterior, um
+   `docker compose down` limpo antes do `up` elimina qualquer dúvida.
+
+### Qual IP eu uso no `PORTWATCH_FRONTEND_PUBLISH`?
+
+Em uma máquina com Docker (e principalmente com Kubernetes/k3s, que cria
+dezenas de interfaces de rede virtuais), `hostname -I` pode devolver uma
+lista enorme de IPs — a maioria deles é rede interna de containers/pods,
+não o IP real da sua LAN. Para achar o IP correto:
+
+```sh
+ip route get 1.1.1.1
+```
+
+A interface/IP que aparece aí (`src ...`) é o que sua máquina usa de
+verdade pra sair pra internet/rede local — normalmente é esse o IP certo,
+não os que terminam em `.0.1`/`.1` isolados em dezenas de faixas diferentes
+(esses costumam ser gateways de redes virtuais Docker/bridge/k3s, um por
+rede, não o host em si).
+
+### Containers ficam em `Up (health: starting)` e não conecta
+
+Espera uns 15–30s — o healthcheck do backend só fica `healthy` depois do
+primeiro ciclo do Collector. Roda `docker compose ps` de novo até `backend`
+e `frontend` aparecerem como `(healthy)`.
+
+### Ainda não conecta depois de tudo isso
+
+```sh
+docker compose ps                     # PORTS bate com IP/porta esperados?
+docker compose logs backend           # erro real no backend?
+docker compose logs frontend          # erro real no nginx?
+curl http://<SEU_IP>:8087/            # rodado NO PRÓPRIO SERVER
+```
+
+Se o `curl` acima (rodado no próprio server, contra o IP público dele, não
+`127.0.0.1`) já falhar, o problema não é a rede até a sua máquina — é o
+container mesmo, e os logs acima vão dizer o quê.

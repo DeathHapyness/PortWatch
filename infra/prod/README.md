@@ -39,9 +39,10 @@ export PORTWATCH_API_TOKEN="$(openssl rand -hex 32)"
 ```
 
 `PORTWATCH_CORS_ALLOW_ORIGINS` já vem com o default correto
-(`["http://127.0.0.1:8080"]`) para a topologia padrão deste compose — só
-precisa ser definido se você também mudar a porta/host publicado do
-frontend (ex. atrás de um domínio real, ver seção abaixo).
+(`127.0.0.1:8080` e `localhost:8080` — os navegadores tratam os dois como
+origens diferentes mesmo sendo o mesmo lugar) para a topologia padrão deste
+compose — só precisa ser definido se você também mudar a porta/host
+publicado do frontend (ex. atrás de um domínio real, ver seção abaixo).
 
 Validado manualmente nesta máquina (build + up + smoke test completo:
 estático, proxy de API sem/com token, a cadeia real
@@ -51,9 +52,32 @@ header `Server` no backend) em 2026-08-27, e automatizado desde então no job
 apenas alguém repetir o mesmo passo a passo manualmente em um host de
 operador real (fora de um runner efêmero de CI).
 
-## Antes de expor fora de loopback
+## Acessar de outra máquina (IP do seu server, não localhost)
 
-Este compose não inclui TLS. Ver
+O default publica só em `127.0.0.1:8080` — só alcançável de dentro do
+próprio host. Se o seu navegador está em outra máquina (o caso comum de
+"testar no meu server": você acessa o dashboard do seu notebook, não do
+console do server), defina onde publicar e ajuste o CORS para bater com a
+URL que você vai realmente usar no navegador:
+
+```sh
+export PORTWATCH_FRONTEND_PUBLISH=192.168.1.50:8080   # o IP real do seu server
+export PORTWATCH_CORS_ALLOW_ORIGINS='["http://192.168.1.50:8080"]'
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+As duas variáveis precisam bater: `PORTWATCH_FRONTEND_PUBLISH` é onde o
+Docker escuta; `PORTWATCH_CORS_ALLOW_ORIGINS` é a URL que o navegador vai
+usar para chamar a API — se divergirem, a página carrega mas toda chamada
+de API falha por CORS sem erro óbvio. Verificado manualmente nesta máquina
+com um IP de LAN de verdade (não loopback): dashboard, CORS e autenticação
+funcionando através dele.
+
+Isso já conta como "exposição na rede", não mais loopback: o token
+auto-gerado por `docker-entrypoint.sh` continua funcionando tecnicamente,
+mas não foi pensado pra isso — defina `PORTWATCH_API_TOKEN` você mesmo (ver
+seção acima) antes de deixar rodando assim por mais que um teste rápido, e
+veja
 [`../../docs/security/operator-guide.md`](../../docs/security/operator-guide.md)
-para reverse proxy, rotação de token e o restante dos requisitos mínimos
-antes de publicar a porta 8080 em qualquer coisa além de `127.0.0.1`.
+para TLS/reverse proxy e o restante dos requisitos mínimos antes de expor
+para além da sua própria LAN de confiança.

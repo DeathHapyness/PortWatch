@@ -162,7 +162,19 @@ services:
       # Único serviço deste compose publicado — ainda assim, sem TLS. Coloque
       # um reverse proxy mantido na frente antes de expor fora de loopback
       # (ver comentário no topo deste arquivo).
-      - "127.0.0.1:8080:8080"
+      #
+      # Default é loopback (só alcançável de dentro do próprio host). Para
+      # acessar de outra máquina (ex. o IP real do seu server na LAN), defina
+      # PORTWATCH_FRONTEND_PUBLISH — e lembre de incluir a origem
+      # correspondente em PORTWATCH_CORS_ALLOW_ORIGINS acima, ou toda
+      # chamada de API do dashboard vai falhar por CORS mesmo com a página
+      # carregando normalmente. Exemplo para expor na LAN em
+      # 192.168.1.50:8080:
+      #   PORTWATCH_FRONTEND_PUBLISH=192.168.1.50:8080 \
+      #   PORTWATCH_CORS_ALLOW_ORIGINS='["http://192.168.1.50:8080"]' \
+      #   docker compose -f docker-compose.prod.yml up -d --build
+      # Ou 0.0.0.0:8080 para aceitar em qualquer interface do host.
+      - "${PORTWATCH_FRONTEND_PUBLISH:-127.0.0.1:8080}:8080"
     depends_on:
       - backend
     networks:
